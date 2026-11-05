@@ -350,11 +350,28 @@ public class MainActivity extends Activity {
     private void article(String id){
         start("社区帖子");String path="/api/v1/community/articles/"+Uri.encode(id);
         task(()->Api.unwrap(api.platform("GET",path,null)),v->{JSONObject a=Api.object(v);section(name(a));note(a.optString("author_name","")+" · "+a.optString("published_at",""));
-            String content=a.optString("body_text",a.optString("summary",""));TextView t=text(content,16,INK);if(!a.optString("body_html").isEmpty())t.setText(android.text.Html.fromHtml(a.optString("body_html"),android.text.Html.FROM_HTML_MODE_COMPACT));t.setTextIsSelectable(true);body.addView(t);
+            String content=CommunityContent.first(a,"body_text","summary"),html=CommunityContent.first(a,"body_html");TextView t=text(content,16,INK);if(!html.isEmpty())t.setText(android.text.Html.fromHtml(html,android.text.Html.FROM_HTML_MODE_COMPACT));t.setTextIsSelectable(true);body.addView(t);
             LinearLayout actions=row();actions.addView(button(a.optBoolean("liked")?"取消赞":"点赞",()->task(()->api.platform("POST",path+"/like",null),r->article(id))));actions.addView(button(a.optBoolean("favorited")?"取消收藏":"收藏",()->task(()->api.platform("POST",path+"/favorite",null),r->article(id))));equalButtons(actions);body.addView(actions);
             section("回复");EditText reply=input("写下回复","",false);body.addView(reply);body.addView(button("发布回复",()->{String s=reply.getText().toString().trim();if(s.isEmpty())return;change("发布这条回复？",()->api.platform("POST",path+"/comments",Api.obj("content",s)),()->article(id));}));
-            task(()->Api.unwrap(api.platform("GET",path+"/comments?page=1&page_size=50",null)),comments->{JSONArray items=Api.array(comments);for(int i=0;i<items.length();i++){JSONObject c=items.optJSONObject(i);if(c==null)continue;card(c.optString("author_name","用户"),c.optString("content",c.optString("body_text","")),null);}});
+            LinearLayout comments=column();body.addView(comments);loadComments(path,comments,1,new java.util.HashSet<>());
         });
+    }
+    private void commentView(LinearLayout parent,JSONObject comment){
+        LinearLayout card=column();card.setPadding(dp(16),dp(14),dp(16),dp(12));card.setBackground(Ui.shape(this,ui.surface,16));
+        String author=CommunityContent.first(comment,"author_name");TextView name=text(author.isEmpty()?"用户":author,17,INK);name.setTypeface(null,Typeface.BOLD);card.addView(name);
+        String content=CommunityContent.first(comment,"content","body_text");TextView full=text(content.isEmpty()?"暂无回复内容":content,16,INK);full.setLineSpacing(dp(3),1);full.setTextIsSelectable(true);full.setMaxLines(4);full.setEllipsize(android.text.TextUtils.TruncateAt.END);card.addView(full);
+        Button expand=button("展开全文",()->{});expand.setVisibility(View.GONE);card.addView(expand);
+        final boolean[] expanded={false};expand.setOnClickListener(v->{expanded[0]=!expanded[0];full.setMaxLines(expanded[0]?Integer.MAX_VALUE:4);full.setEllipsize(expanded[0]?null:android.text.TextUtils.TruncateAt.END);expand.setText(expanded[0]?"收起":"展开全文");});
+        full.post(()->{if(full.getLayout()!=null&&full.getLayout().getLineCount()>0){int last=full.getLayout().getLineCount()-1;if(full.getLayout().getEllipsisCount(last)>0||full.getLayout().getLineCount()>4)expand.setVisibility(View.VISIBLE);}});
+        LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(-1,-2);params.bottomMargin=dp(10);parent.addView(card,params);
+    }
+    private void loadComments(String path,LinearLayout container,int page,java.util.Set<String> seen){
+        Button more=button(page==1?"加载回复":"加载更多回复",()->{});container.addView(more);
+        Runnable load=()->{more.setEnabled(false);more.setText("正在加载…");task(()->{try{return Api.unwrap(api.platform("GET",path+"/comments?page="+page+"&page_size=50",null));}catch(Exception e){handler.post(()->{more.setEnabled(true);more.setText("加载失败，点击重试");});throw e;}},result->{
+            container.removeView(more);JSONArray items=Api.array(result);for(int i=0;i<items.length();i++){JSONObject comment=items.optJSONObject(i);if(comment==null)continue;String key=CommunityContent.first(comment,"id");if(!key.isEmpty()&&!seen.add(key))continue;commentView(container,comment);}
+            JSONObject meta=Api.object(result);if(items.length()>0&&page*50<meta.optInt("total",page*50))loadComments(path,container,page+1,seen);
+            else if(page==1&&items.length()==0)container.addView(text("还没有回复，来参与讨论吧",14,MUTED));
+        });};more.setOnClickListener(v->load.run());if(page==1)load.run();
     }
     private void publish(boolean question){
         start(question?"发布问题":"发布帖子");if(!requireAccount())return;EditText title=input("标题","",false),content=input("正文","",false);content.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_MULTI_LINE);content.setMinLines(8);body.addView(title);body.addView(content);

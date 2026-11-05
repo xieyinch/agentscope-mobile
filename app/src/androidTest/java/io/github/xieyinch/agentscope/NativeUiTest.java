@@ -37,6 +37,21 @@ public class NativeUiTest {
         android.net.Uri output=context.getContentResolver().insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI,values);assertNotNull(output);
         try(OutputStream out=context.getContentResolver().openOutputStream(output)){assertNotNull(out);bitmap.compress(Bitmap.CompressFormat.PNG,100,out);}bitmap.recycle();
     }
+    @Test public void expandsAndCollapsesFullComment() throws Exception {
+        try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)){
+            scenario.onActivity(a->{try{
+                screenshotRoot=a.getWindow().getDecorView();
+                java.lang.reflect.Method start=MainActivity.class.getDeclaredMethod("start",String.class);start.setAccessible(true);start.invoke(a,"回复交互测试");
+                java.lang.reflect.Field field=MainActivity.class.getDeclaredField("body");field.setAccessible(true);LinearLayout body=(LinearLayout)field.get(a);
+                java.lang.reflect.Method render=MainActivity.class.getDeclaredMethod("commentView",LinearLayout.class,org.json.JSONObject.class);render.setAccessible(true);
+                render.invoke(a,body,Api.obj("author_name","测试回复","content","第一行\n第二行\n第三行\n第四行\n第五行\n最后一行：完整内容可复制"));
+            }catch(Exception e){throw new AssertionError(e);}});
+            screenshot("07-comment-collapsed");
+            scenario.onActivity(a->{View toggle=find(a.getWindow().getDecorView(),"展开全文");assertNotNull(toggle);assertEquals(View.VISIBLE,toggle.getVisibility());tap(a,"展开全文");TextView content=(TextView)find(a.getWindow().getDecorView(),"第一行\n第二行\n第三行\n第四行\n第五行\n最后一行：完整内容可复制");assertEquals(Integer.MAX_VALUE,content.getMaxLines());assertTrue(content.isTextSelectable());});
+            screenshot("08-comment-expanded");
+            scenario.onActivity(a->{tap(a,"收起");assertNotNull(find(a.getWindow().getDecorView(),"展开全文"));});
+        }
+    }
     @Test public void preservesPerTabNavigationAndCapturesNativeScreens() throws Exception {
         try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)){
             scenario.onActivity(a->{screenshotRoot=a.getWindow().getDecorView();new SecretStore(a).clear();});
