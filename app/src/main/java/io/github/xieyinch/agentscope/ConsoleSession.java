@@ -12,16 +12,20 @@ final class ConsoleSession {
     private ConsoleSession(HttpUrl base,String token,OriginCookies cookies){this.base=base;this.token=token;this.cookies=cookies;}
 
     static ConsoleSession open(OkHttpClient transport,String address,String suppliedToken) throws IOException {return open(transport,address,suppliedToken,false);}
-    static ConsoleSession open(OkHttpClient transport,String address,String suppliedToken,boolean managed) throws IOException {
+    static ConsoleSession open(OkHttpClient transport,String address,String suppliedToken,boolean managed) throws IOException {return open(transport,address,suppliedToken,managed,Collections.emptyList());}
+    static ConsoleSession open(OkHttpClient transport,String address,String suppliedToken,boolean managed,List<Cookie> inherited) throws IOException {
         HttpUrl entry=HttpUrl.parse(address.trim());
         if(entry==null||!entry.isHttps()||!entry.username().isEmpty()||!entry.password().isEmpty())
             throw new IOException("请使用有效的 HTTPS 实例地址");
         OriginCookies cookies=new OriginCookies(entry);
+        if(managed)cookies.saveFromResponse(entry,inherited);
         OkHttpClient client=transport.newBuilder().cookieJar(cookies).followRedirects(false).followSslRedirects(false).build();
         HttpUrl current=entry;
         // This GET is essential: managed instances exchange their signed entry link for HttpOnly cookies.
         for(int redirect=0;;redirect++) {
-            Request request=new Request.Builder().url(current).header("Accept","text/html,application/json").get().build();
+            Request.Builder navigation=new Request.Builder().url(current).header("Accept","text/html,application/json").get();
+            if(managed)navigation.header("Referer","https://platform.agentscope.io/");
+            Request request=navigation.build();
             try(Response response=client.newCall(request).execute()) {
                 int code=response.code();
                 if(code==301||code==302||code==303||code==307||code==308){
@@ -31,7 +35,7 @@ final class ConsoleSession {
                     current=next;continue;
                 }
                 if(!response.isSuccessful())throw new IOException(code==401||code==403?
-                    "控制台访问链接已失效，请返回部署页重新连接（入口认证 "+code+"）":"控制台访问入口失败（"+code+"）");
+                    "控制台入口未通过认证（入口认证 "+code+"，可用会话 "+cookies.loadForRequest(current).size()+"）。请刷新连接。":"控制台访问入口失败（"+code+"）");
                 break;
             }
         }
@@ -52,6 +56,10 @@ final class ConsoleSession {
         HttpUrl url=HttpUrl.get("https://platform.agentscope.io/").resolve(address);
         if(url==null||!url.encodedPath().startsWith("/api/"))throw new IOException("实例尚未就绪，请稍后刷新");
         return url.encodedPath()+(url.encodedQuery()==null?"":"?"+url.encodedQuery());
+    }
+    static List<Cookie> managedEntryCookies(OriginCookies platform,HttpUrl entry){
+        if(entry==null||!entry.isHttps()||!(entry.host().equals("agentscope.io")||entry.host().endsWith(".agentscope.io")))return Collections.emptyList();
+        return platform.matchingForNavigation(entry);
     }
     static boolean sameOrigin(HttpUrl a,HttpUrl b){return a.scheme().equals(b.scheme())&&a.host().equals(b.host())&&a.port()==b.port();}
     static HttpUrl apiBase(HttpUrl landing){
@@ -74,6 +82,11 @@ final class ConsoleSession {
             values.removeIf(c->c.expiresAt()<=System.currentTimeMillis());
             List<Cookie> result=new ArrayList<>();for(Cookie c:values)if(c.matches(url))result.add(c);return result;
         }
+        synchronized List<Cookie> matchingForNavigation(HttpUrl destination){
+            values.removeIf(c->c.expiresAt()<=System.currentTimeMillis());
+            List<Cookie> result=new ArrayList<>();for(Cookie c:values)if(c.matches(destination))result.add(c);return result;
+        }
+        synchronized void clear(){values.clear();}
         synchronized List<String> serialize(){List<String> out=new ArrayList<>();for(Cookie c:values)out.add(c.toString());return out;}
         static OriginCookies restore(HttpUrl origin,List<String> strings){OriginCookies jar=new OriginCookies(origin);List<Cookie> parsed=new ArrayList<>();for(String s:strings){Cookie c=Cookie.parse(origin,s);if(c!=null)parsed.add(c);}jar.saveFromResponse(origin,parsed);return jar;}
     }

@@ -191,8 +191,8 @@ public class MainActivity extends Activity {
         body.addView(button("连接实例",()->navigate(this::connection,true)));
         body.addView(button("我的帖子",()->navigate(()->articleList("我的帖子","/api/v1/community/me/articles?page=1&page_size=30"),true)));
         body.addView(button("我的收藏",()->navigate(()->articleList("我的收藏","/api/v1/community/me/favorites?page=1&page_size=30"),true)));
-        body.addView(button("退出登录",()->change("退出并移除此应用中保存的全部登录状态？",()->{try{api.platform("POST","/api/v1/auth/logout",null);}finally{api.secrets.clear();}return null;},this::account)));
-        section("AgentScope 随行 · 0.3.0");note("为 AgentScope 打造的独立安卓客户端。部分高级能力仍在完善中。");
+        body.addView(button("退出登录",()->change("退出并移除此应用中保存的全部登录状态？",()->{try{api.platform("POST","/api/v1/auth/logout",null);}finally{api.clearLocalSession();}return null;},this::account)));
+        section("AgentScope 随行 · 0.3.1");note("为 AgentScope 打造的独立安卓客户端。部分高级能力仍在完善中。");
     }
 
     private void settings(){

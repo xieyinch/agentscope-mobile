@@ -15,11 +15,11 @@ public class ConsoleSessionTest {
     private MockWebServer server;
     private OkHttpClient client;
     @Before public void setUp() throws Exception {
-        HeldCertificate cert=new HeldCertificate.Builder().commonName("localhost").addSubjectAlternativeName("localhost").build();
+        HeldCertificate cert=new HeldCertificate.Builder().commonName("localhost").addSubjectAlternativeName("localhost").addSubjectAlternativeName("platform.agentscope.io").addSubjectAlternativeName("console.agentscope.io").build();
         HandshakeCertificates tls=new HandshakeCertificates.Builder().heldCertificate(cert).build();
         HandshakeCertificates trust=new HandshakeCertificates.Builder().addTrustedCertificate(cert.certificate()).build();
         server=new MockWebServer();server.useHttps(tls.sslSocketFactory(),false);server.start();
-        client=new OkHttpClient.Builder().sslSocketFactory(trust.sslSocketFactory(),trust.trustManager()).build();
+        client=new OkHttpClient.Builder().sslSocketFactory(trust.sslSocketFactory(),trust.trustManager()).dns(host->Collections.singletonList(java.net.InetAddress.getByName("127.0.0.1"))).build();
     }
     @After public void tearDown() throws Exception {server.shutdown();}
     @Test public void exchangesSignedEntryForCookieBeforeHealthProbe() throws Exception {
@@ -68,6 +68,39 @@ public class ConsoleSessionTest {
         HttpUrl base=ConsoleSession.apiBase(HttpUrl.get("https://example.test/team/console/chat?ticket=secret"));
         assertEquals("https://example.test/team/",base.toString());
         assertEquals("/team/api/agent/health",base.newBuilder().addPathSegments("api/agent/health").build().encodedPath());
+    }
+    @Test public void carriesPlatformAccessResponseCookieIntoFirstConsoleNavigation() throws Exception {
+        HttpUrl platform=server.url("/").newBuilder().host("platform.agentscope.io").build();
+        HttpUrl console=server.url("/chat").newBuilder().host("console.agentscope.io").build();
+        ConsoleSession.OriginCookies platformJar=new ConsoleSession.OriginCookies(platform);
+        server.enqueue(new MockResponse().addHeader("Set-Cookie","gateway=synthetic-session; Domain=agentscope.io; Path=/; Secure; HttpOnly")
+            .addHeader("Set-Cookie","platform_only=private-session; Path=/; Secure; HttpOnly").setBody("{\"data\":{}}"));
+        server.enqueue(new MockResponse().setBody("console"));server.enqueue(new MockResponse().setBody("{}"));
+        OkHttpClient platformClient=client.newBuilder().cookieJar(platformJar).build();
+        try(Response response=platformClient.newCall(new Request.Builder().url(platform.resolve("/api/v1/app/access")).header("Authorization","Bearer synthetic-platform-token").build()).execute()){assertTrue(response.isSuccessful());}
+        List<Cookie> inherited=ConsoleSession.managedEntryCookies(platformJar,console);assertEquals(1,inherited.size());
+        ConsoleSession session=ConsoleSession.open(client,console.toString(),"",true,inherited);
+        RecordedRequest access=server.takeRequest(),entry=server.takeRequest(),probe=server.takeRequest();
+        assertEquals("Bearer synthetic-platform-token",access.getHeader("Authorization"));
+        assertEquals("gateway=synthetic-session",entry.getHeader("Cookie"));
+        assertEquals("gateway=synthetic-session",probe.getHeader("Cookie"));
+        assertEquals("https://platform.agentscope.io/",entry.getHeader("Referer"));
+        assertNull(entry.getHeader("Authorization"));assertNull(probe.getHeader("Authorization"));
+        assertTrue(session.cookies.loadForRequest(platform).isEmpty());
+    }
+    @Test public void neverWidensHostOnlyPlatformCookiesToConsole() {
+        HttpUrl platform=HttpUrl.get("https://platform.agentscope.io/");
+        ConsoleSession.OriginCookies jar=new ConsoleSession.OriginCookies(platform);
+        jar.saveFromResponse(platform,Collections.singletonList(Cookie.parse(platform,"private=value; Path=/; Secure; HttpOnly")));
+        assertTrue(ConsoleSession.managedEntryCookies(jar,HttpUrl.get("https://console.agentscope.io/chat")).isEmpty());
+    }
+    @Test public void respectsCookiePathsAndRejectsUnrelatedConsoleHosts() {
+        HttpUrl platform=HttpUrl.get("https://platform.agentscope.io/api/v1/app/access");
+        ConsoleSession.OriginCookies jar=new ConsoleSession.OriginCookies(platform);
+        jar.saveFromResponse(platform,Collections.singletonList(Cookie.parse(platform,"scoped=value; Domain=agentscope.io; Path=/api/; Secure; HttpOnly")));
+        assertTrue(ConsoleSession.managedEntryCookies(jar,HttpUrl.get("https://console.agentscope.io/chat")).isEmpty());
+        assertTrue(ConsoleSession.managedEntryCookies(jar,HttpUrl.get("https://agentscope.io.attacker.invalid/api/")).isEmpty());
+        jar.clear();assertTrue(jar.loadForRequest(platform).isEmpty());
     }
     @Test public void preservesEncodedAccessPathAndSignedQueryExactly() throws Exception {
         assertEquals("/api/access/a%2Fb?signature=a%2Bb%2Fc%3D",ConsoleSession.platformAccessPath("https://platform.agentscope.io/api/access/a%2Fb?signature=a%2Bb%2Fc%3D"));

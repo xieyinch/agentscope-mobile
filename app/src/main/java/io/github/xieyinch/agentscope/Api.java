@@ -11,16 +11,25 @@ final class Api {
     static final String PLATFORM="https://platform.agentscope.io";
     private static final MediaType JSON=MediaType.get("application/json; charset=utf-8");
     final SecretStore secrets;
+    private final ConsoleSession.OriginCookies platformCookies=new ConsoleSession.OriginCookies(HttpUrl.get(PLATFORM));
     final OkHttpClient http=new OkHttpClient.Builder().connectTimeout(20,TimeUnit.SECONDS)
         .readTimeout(60,TimeUnit.SECONDS).followRedirects(false).cookieJar(new CookieJar(){
-        public void saveFromResponse(HttpUrl url,java.util.List<Cookie> cookies){ConsoleSession.OriginCookies jar=instanceCookies;if(jar!=null){jar.saveFromResponse(url,cookies);persistCookies(jar);}}
-        public java.util.List<Cookie> loadForRequest(HttpUrl url){ConsoleSession.OriginCookies jar=instanceCookies;return jar==null?java.util.Collections.emptyList():jar.loadForRequest(url);}
+        public void saveFromResponse(HttpUrl url,java.util.List<Cookie> cookies){
+            if(ConsoleSession.sameOrigin(HttpUrl.get(PLATFORM),url)){platformCookies.saveFromResponse(url,cookies);persistCookies("platformCookies",platformCookies);}
+            else {ConsoleSession.OriginCookies jar=instanceCookies;if(jar!=null){jar.saveFromResponse(url,cookies);persistCookies(jar);}}
+        }
+        public java.util.List<Cookie> loadForRequest(HttpUrl url){
+            if(ConsoleSession.sameOrigin(HttpUrl.get(PLATFORM),url))return platformCookies.loadForRequest(url);
+            ConsoleSession.OriginCookies jar=instanceCookies;return jar==null?java.util.Collections.emptyList():jar.loadForRequest(url);
+        }
     }).build();
     volatile String agent="default";
     final ThreadLocal<String> requestAgent=new ThreadLocal<>();
     private volatile ConsoleSession.OriginCookies instanceCookies;
     Api(SecretStore store) {
         secrets=store;
+        try{JSONArray values=new JSONArray(store.get("platformCookies"));java.util.List<Cookie> list=new java.util.ArrayList<>();for(int i=0;i<values.length();i++){Cookie c=Cookie.parse(HttpUrl.get(PLATFORM),values.getString(i));if(c!=null)list.add(c);}platformCookies.saveFromResponse(HttpUrl.get(PLATFORM),list);}catch(Exception ignored){}
+
         HttpUrl saved=HttpUrl.parse(store.get("instance"));
         if(saved!=null){
             try{JSONArray values=new JSONArray(store.get("instanceCookies"));java.util.List<String> list=new java.util.ArrayList<>();for(int i=0;i<values.length();i++)list.add(values.getString(i));instanceCookies=ConsoleSession.OriginCookies.restore(saved,list);}catch(Exception ignored){}
@@ -71,9 +80,13 @@ final class Api {
         }
     }
     void login(String email,String password) throws Exception {
+        platformCookies.clear();persistCookies("platformCookies",platformCookies);
         JSONObject data=object(unwrap(call(PLATFORM+"/api/v1/auth/login","POST",obj("account",email,"password",password),"",false,null)));
+        instanceCookies=null;
+        for(String key:new String[]{"instance","instanceToken","instanceCookies","appId"})secrets.put(key,"");
         saveTokens(data); secrets.put("email",email);
     }
+    void clearLocalSession(){platformCookies.clear();ConsoleSession.OriginCookies old=instanceCookies;if(old!=null)old.clear();instanceCookies=null;secrets.clear();}
     private void saveTokens(JSONObject data) throws Exception {
         String access=str(data,"accessToken");
         if(access.isEmpty())throw new IOException("服务端未返回有效登录凭据");
@@ -101,12 +114,14 @@ final class Api {
         String console=str(data,"console_base_url");
         configureInstance(console,"",true);secrets.put("appId",appId);
     }
-    private void persistCookies(ConsoleSession.OriginCookies jar){
-        try{secrets.put("instanceCookies",new JSONArray(jar.serialize()).toString());}catch(Exception ignored){/* Keep the live session; reconnect obtains a fresh one. */}
+    private void persistCookies(ConsoleSession.OriginCookies jar){persistCookies("instanceCookies",jar);}
+    private void persistCookies(String key,ConsoleSession.OriginCookies jar){
+        try{secrets.put(key,new JSONArray(jar.serialize()).toString());}catch(Exception ignored){/* Keep the live session; reconnect obtains a fresh one. */}
     }
     void configureInstance(String address,String token) throws Exception {configureInstance(address,token,false);}
     private void configureInstance(String address,String token,boolean managed) throws Exception {
-        ConsoleSession session=ConsoleSession.open(http,address,token,managed);
+        java.util.List<Cookie> inherited=managed?ConsoleSession.managedEntryCookies(platformCookies,HttpUrl.parse(address)):java.util.Collections.emptyList();
+        ConsoleSession session=ConsoleSession.open(http,address,token,managed,inherited);
         String base=session.base.toString().replaceAll("/+$","");
         // Only replace a working connection after both gateway and runtime checks succeed.
         secrets.put("instance",base);secrets.put("instanceToken",session.token);
