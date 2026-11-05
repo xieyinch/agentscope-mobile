@@ -12,10 +12,20 @@ final class Api {
     private static final MediaType JSON=MediaType.get("application/json; charset=utf-8");
     final SecretStore secrets;
     final OkHttpClient http=new OkHttpClient.Builder().connectTimeout(20,TimeUnit.SECONDS)
-        .readTimeout(60,TimeUnit.SECONDS).followRedirects(false).build();
+        .readTimeout(60,TimeUnit.SECONDS).followRedirects(false).cookieJar(new CookieJar(){
+        public void saveFromResponse(HttpUrl url,java.util.List<Cookie> cookies){ConsoleSession.OriginCookies jar=instanceCookies;if(jar!=null){jar.saveFromResponse(url,cookies);persistCookies(jar);}}
+        public java.util.List<Cookie> loadForRequest(HttpUrl url){ConsoleSession.OriginCookies jar=instanceCookies;return jar==null?java.util.Collections.emptyList():jar.loadForRequest(url);}
+    }).build();
     volatile String agent="default";
     final ThreadLocal<String> requestAgent=new ThreadLocal<>();
-    Api(SecretStore store) { secrets=store; }
+    private volatile ConsoleSession.OriginCookies instanceCookies;
+    Api(SecretStore store) {
+        secrets=store;
+        HttpUrl saved=HttpUrl.parse(store.get("instance"));
+        if(saved!=null){
+            try{JSONArray values=new JSONArray(store.get("instanceCookies"));java.util.List<String> list=new java.util.ArrayList<>();for(int i=0;i<values.length();i++)list.add(values.getString(i));instanceCookies=ConsoleSession.OriginCookies.restore(saved,list);}catch(Exception ignored){}
+        }
+    }
     static JSONObject obj(Object... pairs) {
         JSONObject o=new JSONObject();
         try { for(int i=0;i<pairs.length;i+=2)o.put((String)pairs[i],pairs[i+1]); }
@@ -75,7 +85,13 @@ final class Api {
     Object instance(String method,String path,Object body,String etag) throws Exception {
         if(!connected())throw new IOException("请先在控制台连接你的 Agent 实例");
         if(!path.startsWith("/")||path.startsWith("//"))throw new IOException("实例接口地址不正确");
-        return call(base()+"/api"+path,method,body,secrets.get("instanceToken"),true,etag);
+        try{return call(base()+"/api"+path,method,body,secrets.get("instanceToken"),true,etag);}
+        catch(HttpFailure expired){
+            String app=secrets.get("appId");
+            if(expired.code!=401||app.isEmpty())throw expired;
+            synchronized(this){connectFromApp(app);}
+            return call(base()+"/api"+path,method,body,secrets.get("instanceToken"),true,etag);
+        }
     }
     void connectFromApp(String appId) throws Exception {
         JSONObject status=object(unwrap(platform("GET","/api/v1/app/get?appId="+Uri.encode(appId),null)));
@@ -85,17 +101,19 @@ final class Api {
         if(u.getEncodedQuery()!=null)path+="?"+u.getEncodedQuery();
         JSONObject data=object(unwrap(platform("GET",path,null)));
         String console=str(data,"console_base_url");
-        configureInstance(console,"");secrets.put("appId",appId);
+        configureInstance(console,"",true);secrets.put("appId",appId);
     }
-    void configureInstance(String address,String token) throws Exception {
-        Uri u=Uri.parse(address.trim());
-        if(!"https".equalsIgnoreCase(u.getScheme())||u.getHost()==null||u.getUserInfo()!=null)throw new IOException("请使用有效的 HTTPS 实例地址");
-        String incoming=u.getQueryParameter("token");
-        String origin="https://"+u.getEncodedAuthority();
-        String supplied=token.trim().isEmpty()?(incoming==null?"":incoming):token.trim();
-        // Verify before replacing a working connection. Instance token is isolated from platform token.
-        call(origin+"/api/agent/health","GET",null,supplied,false,null);
-        secrets.put("instance",origin);secrets.put("instanceToken",supplied);
+    private void persistCookies(ConsoleSession.OriginCookies jar){
+        try{secrets.put("instanceCookies",new JSONArray(jar.serialize()).toString());}catch(Exception ignored){/* Keep the live session; reconnect obtains a fresh one. */}
+    }
+    void configureInstance(String address,String token) throws Exception {configureInstance(address,token,false);}
+    private void configureInstance(String address,String token,boolean managed) throws Exception {
+        ConsoleSession session=ConsoleSession.open(http,address,token,managed);
+        String base=session.base.toString().replaceAll("/+$","");
+        // Only replace a working connection after both gateway and runtime checks succeed.
+        secrets.put("instance",base);secrets.put("instanceToken",session.token);
+        instanceCookies=session.cookies;persistCookies(session.cookies);
+        secrets.put("appId","");
     }
     Request request(String url,String method,Object body,String token,boolean scoped,String etag) {
         Request.Builder b=new Request.Builder().url(url).header("Accept","application/json");
@@ -112,6 +130,7 @@ final class Api {
             if(!r.isSuccessful())throw new HttpFailure(r.code(),errorMessage(raw,r.code()));
             if(raw.trim().isEmpty())return new JSONObject();
             Object parsed;
+            if(raw.trim().startsWith("<"))throw new IOException("接口返回了访问入口页面，请重新连接 Agent 实例");
             try{parsed=new JSONTokener(raw).nextValue();}catch(JSONException e){throw new IOException("服务器响应无法识别");}
             if(parsed instanceof JSONObject) {
                 JSONObject o=(JSONObject)parsed;
