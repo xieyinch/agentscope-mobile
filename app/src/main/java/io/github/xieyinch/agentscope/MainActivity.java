@@ -132,7 +132,7 @@ public class MainActivity extends Activity {
 
     private void dashboard(){
         start("Agent 控制台");
-        card(api.connected()?"已连接 Agent 实例":"连接你的 Agent",api.connected()?"当前智能体："+api.agent:"原生界面 · 直接连接官方服务",()->navigate(this::connection,true));
+        card(api.connected()?"已连接 Agent 实例":"连接你的 Agent",api.connected()?"当前智能体："+api.agent:"让任务与工作空间触手可及",()->navigate(this::connection,true));
         if(api.connected()){
             card("开始对话","历史记录、流式回复、停止任务",()->navigate(this::chats,true));
             card("智能体管理","选择、创建、启停与配置 Agent",()->navigate(()->resources("智能体","/agents","agents"),true));
@@ -172,17 +172,17 @@ public class MainActivity extends Activity {
         body.addView(button("清空并重置实例",()->change("清空并重置当前实例？配置与数据可能被永久删除，此操作无法通过应用撤回。",()->api.platform("POST","/api/v1/app/reset",Api.obj("appId",appId)),()->deploymentActions(app))));
     }
     private void login(){
-        start("登录 AgentScope");section("欢迎回来");note("使用 AgentScope 绑定的邮箱登录。凭据只发送至 platform.agentscope.io；密码不保存。");
+        start("欢迎回来");note("登录你的 AgentScope 账户，继续管理工作空间。");
         EditText email=input("邮箱",api.secrets.get("email"),false),password=input("密码","",true);email.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);body.addView(email);body.addView(password);
         Button submit=primary("登录",()->{});submit.setOnClickListener(view->{String a=email.getText().toString().trim(),p=password.getText().toString();if(a.isEmpty()||p.isEmpty()){info("请输入邮箱和密码");return;}submit.setEnabled(false);task(()->{try{api.login(a,p);return null;}finally{handler.post(()->submit.setEnabled(true));}},v->{password.setText("");history.clear();navigate(this::dashboard,false);});});body.addView(submit);
-        note("当前版本支持邮箱密码登录；GitHub OAuth、注册与账户合并尚未实现。");
+        note("暂支持邮箱密码登录。密码不会保存在设备上。");
     }
     private void connection(){
-        start("连接 Agent 实例");note("推荐登录平台，在部署管理中点击连接。也可连接你自己的 HTTPS QwenPaw 实例。");
+        start("连接工作空间");note("从平台部署列表选择实例，或输入已有实例的地址。");
         body.addView(button("平台部署列表",()->navigate(this::dashboard,true)));
         EditText address=input("HTTPS 实例地址",api.base(),false),token=input("实例访问令牌（如启用认证）","",true);address.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_URI);body.addView(address);body.addView(token);
         body.addView(primary("验证并连接",()->{String a=address.getText().toString(),t=token.getText().toString();if(t.isEmpty()&&a.equals(api.base()))t=api.secrets.get("instanceToken");final String supplied=t;task(()->{api.configureInstance(a,supplied);return null;},v->{token.setText("");history.clear();navigate(this::dashboard,false);});}));
-        note("平台登录与实例认证彼此独立。实例地址及令牌通过 Android Keystore 加密保存。");
+        note("连接凭据经过加密，仅在此设备保存。");
     }
     private void account(){
         start("我的账户");if(!requireAccount())return;

@@ -105,6 +105,12 @@ jobs:
         with:
           name: agentscope-android-${{ github.run_number }}
           path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: native-ui-preview-${{ github.run_number }}
+          path: preview
+      - name: Include native screen previews
+        run: cp preview/ui-preview/*.png dist/
       - name: Publish tagged test build
         env:
           GH_TOKEN: ${{ github.token }}
