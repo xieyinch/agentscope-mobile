@@ -96,9 +96,7 @@ final class Api {
     void connectFromApp(String appId) throws Exception {
         JSONObject status=object(unwrap(platform("GET","/api/v1/app/get?appId="+Uri.encode(appId),null)));
         String access=str(status,"accessUrl");
-        Uri u=Uri.parse(access); String path=u.getPath();
-        if(path==null||!path.startsWith("/api/"))throw new IOException("实例尚未就绪，请稍后刷新");
-        if(u.getEncodedQuery()!=null)path+="?"+u.getEncodedQuery();
+        String path=ConsoleSession.platformAccessPath(access);
         JSONObject data=object(unwrap(platform("GET",path,null)));
         String console=str(data,"console_base_url");
         configureInstance(console,"",true);secrets.put("appId",appId);

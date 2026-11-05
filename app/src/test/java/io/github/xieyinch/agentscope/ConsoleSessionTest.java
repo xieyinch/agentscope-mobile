@@ -69,6 +69,13 @@ public class ConsoleSessionTest {
         assertEquals("https://example.test/team/",base.toString());
         assertEquals("/team/api/agent/health",base.newBuilder().addPathSegments("api/agent/health").build().encodedPath());
     }
+    @Test public void preservesEncodedAccessPathAndSignedQueryExactly() throws Exception {
+        assertEquals("/api/access/a%2Fb?signature=a%2Bb%2Fc%3D",ConsoleSession.platformAccessPath("https://platform.agentscope.io/api/access/a%2Fb?signature=a%2Bb%2Fc%3D"));
+        assertEquals("/api/access?ticket=xyz",ConsoleSession.platformAccessPath("/api/access?ticket=xyz"));
+    }
+    @Test public void refusesNonApiAccessEntry() throws Exception {
+        try{ConsoleSession.platformAccessPath("https://platform.agentscope.io/login");fail();}catch(IOException expected){assertTrue(expected.getMessage().contains("未就绪"));}
+    }
     @Test public void doesNotAcceptAnHtmlErrorPageAsAHealthyApi() throws Exception {
         server.enqueue(new MockResponse().setBody("console"));server.enqueue(new MockResponse().setBody("<html>access expired</html>"));
         try{ConsoleSession.open(client,server.url("/chat").toString(),"");fail();}catch(IOException e){assertTrue(e.getMessage().contains("失效页面"));}

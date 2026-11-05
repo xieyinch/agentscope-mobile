@@ -48,6 +48,11 @@ final class ConsoleSession {
         }
         return new ConsoleSession(base,token,cookies);
     }
+    static String platformAccessPath(String address) throws IOException {
+        HttpUrl url=HttpUrl.get("https://platform.agentscope.io/").resolve(address);
+        if(url==null||!url.encodedPath().startsWith("/api/"))throw new IOException("实例尚未就绪，请稍后刷新");
+        return url.encodedPath()+(url.encodedQuery()==null?"":"?"+url.encodedQuery());
+    }
     static boolean sameOrigin(HttpUrl a,HttpUrl b){return a.scheme().equals(b.scheme())&&a.host().equals(b.host())&&a.port()==b.port();}
     static HttpUrl apiBase(HttpUrl landing){
         String path=landing.encodedPath();

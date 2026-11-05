@@ -147,7 +147,7 @@ public class MainActivity extends Activity {
         task(()->Api.unwrap(api.platform("GET","/api/v1/app/list",null)),v->{JSONArray list=Api.array(v);if(list.length()==0)note("此账户还没有部署实例。");for(int i=0;i<list.length();i++){JSONObject a=list.optJSONObject(i);if(a==null)continue;card(name(a),a.optString("status","查看状态与管理"),()->navigate(()->deployment(a),true));}});
     }
     private void deployment(JSONObject app){
-        start("工作空间");String appId=id(app);note("管理你的云端 Agent 实例");
+        start("工作空间");String appId=app.optString("appId",id(app));note("管理你的云端 Agent 实例");
         task(()->Api.unwrap(api.platform("GET","/api/v1/app/get?appId="+Uri.encode(appId),null)),value->{
             JSONObject state=Api.object(value);String raw=state.optString("status","unknown");String label=raw.equals("running")?"正在运行":raw.equals("sleeping")?"已休眠":raw.equals("stopped")?"已停止":raw.equals("starting")?"正在启动":raw;
             LinearLayout hero=column();hero.setPadding(dp(20),dp(20),dp(20),dp(20));hero.setBackground(Ui.shape(this,ui.surface,20));TextView badge=text("●  "+label,13,raw.equals("running")?ui.green:MUTED);hero.addView(badge);TextView name=text("QwenPaw",26,INK);name.setTypeface(null,Typeface.BOLD);hero.addView(name);hero.addView(text("连接控制台后，开始对话并管理 Agent。",14,MUTED));LinearLayout.LayoutParams hp=new LinearLayout.LayoutParams(-1,-2);hp.bottomMargin=dp(14);body.addView(hero,hp);
@@ -160,7 +160,7 @@ public class MainActivity extends Activity {
         });
     }
     private void deploymentActions(JSONObject app){
-        start("运行管理");String appId=id(app);note("这些操作仅作用于当前工作空间。");
+        start("运行管理");String appId=app.optString("appId",id(app));note("这些操作仅作用于当前工作空间。");
         section("运行控制");
         for(String[] a:new String[][]{{"启动实例","start"},{"停止实例","stop"},{"重启实例","restart"},{"升级 QwenPaw","update"},{"恢复实例","recover"}})
             card(a[0],"",()->change(a[0]+"？",()->api.platform("POST","/api/v1/app/"+a[1],Api.obj("appId",appId)),()->deploymentActions(app)));
