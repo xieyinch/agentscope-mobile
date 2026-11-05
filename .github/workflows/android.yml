@@ -84,7 +84,7 @@ jobs:
           script: |
             gradle --no-daemon connectedDebugAndroidTest
             mkdir -p ui-preview
-            adb pull /sdcard/Android/data/io.github.xieyinch.agentscope/files/ui-preview/. ui-preview/
+            adb pull /sdcard/Pictures/agentscope-ui-preview/. ui-preview/
       - uses: actions/upload-artifact@v4
         if: always()
         with:

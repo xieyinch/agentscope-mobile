@@ -23,8 +23,14 @@ public class NativeUiTest {
     private void screenshot(String name) throws Exception {
         InstrumentationRegistry.getInstrumentation().waitForIdleSync();
         Bitmap bitmap=InstrumentationRegistry.getInstrumentation().getUiAutomation().takeScreenshot();assertNotNull(bitmap);
-        File dir=new File(InstrumentationRegistry.getInstrumentation().getTargetContext().getExternalFilesDir(null),"ui-preview");assertTrue(dir.mkdirs()||dir.isDirectory());
-        try(FileOutputStream out=new FileOutputStream(new File(dir,name+".png"))){bitmap.compress(Bitmap.CompressFormat.PNG,100,out);}bitmap.recycle();
+        if(android.os.Build.VERSION.SDK_INT<29)throw new AssertionError("Screenshot worker requires API 29+");
+        android.content.Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
+        android.content.ContentValues values=new android.content.ContentValues();
+        values.put(android.provider.MediaStore.Images.Media.DISPLAY_NAME,name+".png");
+        values.put(android.provider.MediaStore.Images.Media.MIME_TYPE,"image/png");
+        values.put(android.provider.MediaStore.Images.Media.RELATIVE_PATH,"Pictures/agentscope-ui-preview");
+        android.net.Uri output=context.getContentResolver().insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI,values);assertNotNull(output);
+        try(OutputStream out=context.getContentResolver().openOutputStream(output)){assertNotNull(out);bitmap.compress(Bitmap.CompressFormat.PNG,100,out);}bitmap.recycle();
     }
     @Test public void preservesPerTabNavigationAndCapturesNativeScreens() throws Exception {
         try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)){
@@ -40,6 +46,10 @@ public class NativeUiTest {
             screenshot("03-login");
             scenario.onActivity(a->{try{new SecretStore(a).put("instance","https://example.invalid");}catch(Exception e){throw new AssertionError(e);}tap(a,"管理");});
             screenshot("04-agent-settings");
+            scenario.onActivity(a->{tap(a,"总览");a.onBackPressed();});
+            screenshot("05-connected-overview");
+            scenario.onActivity(a->{try{java.lang.reflect.Method method=MainActivity.class.getDeclaredMethod("deploymentActions",org.json.JSONObject.class);method.setAccessible(true);method.invoke(a,Api.obj("appId","synthetic-preview"));}catch(Exception e){throw new AssertionError(e);}});
+            screenshot("06-deployment-management");
             scenario.onActivity(a->new SecretStore(a).clear());
         }
     }
