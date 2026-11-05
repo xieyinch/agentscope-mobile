@@ -24,7 +24,6 @@ final class ConsoleSession {
         // This GET is essential: managed instances exchange their signed entry link for HttpOnly cookies.
         for(int redirect=0;;redirect++) {
             Request.Builder navigation=new Request.Builder().url(current).header("Accept","text/html,application/json").get();
-            if(managed)navigation.header("Referer","https://platform.agentscope.io/");
             Request request=navigation.build();
             try(Response response=client.newCall(request).execute()) {
                 int code=response.code();

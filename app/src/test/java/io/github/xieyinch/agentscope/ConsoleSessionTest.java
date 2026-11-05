@@ -84,7 +84,7 @@ public class ConsoleSessionTest {
         assertEquals("Bearer synthetic-platform-token",access.getHeader("Authorization"));
         assertEquals("gateway=synthetic-session",entry.getHeader("Cookie"));
         assertEquals("gateway=synthetic-session",probe.getHeader("Cookie"));
-        assertEquals("https://platform.agentscope.io/",entry.getHeader("Referer"));
+        assertNull(entry.getHeader("Referer"));
         assertNull(entry.getHeader("Authorization"));assertNull(probe.getHeader("Authorization"));
         assertTrue(session.cookies.loadForRequest(platform).isEmpty());
     }
