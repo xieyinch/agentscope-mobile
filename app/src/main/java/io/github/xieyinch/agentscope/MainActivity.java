@@ -56,6 +56,7 @@ public class MainActivity extends Activity {
         INK=ui.ink;MUTED=ui.muted;ACCENT=ui.blue;BG=ui.bg;
         if(Build.VERSION.SDK_INT>=29)getWindow().getDecorView().setForceDarkAllowed(false);
         getWindow().setStatusBarColor(BG);getWindow().setNavigationBarColor(ui.surface);
+        if(Build.VERSION.SDK_INT>=26){int flags=getWindow().getDecorView().getSystemUiVisibility();getWindow().getDecorView().setSystemUiVisibility(ui.dark?flags&~View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR:flags|View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);}
         for(int i=0;i<5;i++)savedHistories.add(new ArrayDeque<>());history=savedHistories.get(0);
         api=new Api(new SecretStore(this));
         api.agent=getPreferences(0).getString("agent","default");
@@ -75,7 +76,7 @@ public class MainActivity extends Activity {
         View divider=new View(this);divider.setBackgroundColor(ui.line);root.addView(divider,new LinearLayout.LayoutParams(-1,dp(1)));
         LinearLayout nav=row();nav.setBackgroundColor(ui.surface);nav.setPadding(dp(6),dp(5),dp(6),dp(5));String[] names={"总览","对话","管理","社区","我的"},icons={"grid","chat","settings","community","person"};
         for(int i=0;i<names.length;i++){final int index=i;LinearLayout tab=column();tab.setGravity(Gravity.CENTER);tab.setContentDescription(names[i]);tab.setBackground(Ui.ripple(this,ui.surface,14,ACCENT));tab.setClickable(true);tab.setFocusable(true);tab.setOnClickListener(v->guard(()->switchTab(index)));
-            tabIcons[i]=new Ui.Icon(this,icons[i],MUTED);tab.addView(tabIcons[i],new LinearLayout.LayoutParams(dp(24),dp(24)));tabLabels[i]=text(names[i],10,MUTED);tabLabels[i].setPadding(0,dp(3),0,0);tabLabels[i].setGravity(Gravity.CENTER);tab.addView(tabLabels[i]);nav.addView(tab,new LinearLayout.LayoutParams(0,dp(54),1));}
+            tabIcons[i]=new Ui.Icon(this,icons[i],MUTED);tab.addView(tabIcons[i],new LinearLayout.LayoutParams(dp(24),dp(24)));tabLabels[i]=text(names[i],11,MUTED);tabLabels[i].setPadding(0,dp(3),0,0);tabLabels[i].setGravity(Gravity.CENTER);tab.addView(tabLabels[i]);nav.addView(tab,new LinearLayout.LayoutParams(0,dp(54),1));}
         root.addView(nav);setContentView(root);switchTab(0);
     }
     private Runnable tabRoot(int index){switch(index){case 1:return this::chats;case 2:return this::settings;case 3:return this::community;case 4:return this::account;default:return this::dashboard;}}
