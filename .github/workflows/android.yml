@@ -70,4 +70,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           TAG: native-0.2.0-build-${{ github.run_number }}
-        run: gh release create "$TAG" dist/* --repo "$REPO" --title "AgentScope Android $TAG" --prerelease --notes-file RELEASE_NOTES.md
+          COMMIT_SHA: ${{ github.sha }}
+        run: gh release create "$TAG" dist/* --repo "$REPO" --target "$COMMIT_SHA" --title "AgentScope Android $TAG" --prerelease --notes-file RELEASE_NOTES.md

@@ -27,9 +27,11 @@ public class MainActivity extends Activity {
     private final Deque<Runnable> history=new ArrayDeque<>();
     private Runnable screen;
     private int epoch=0;
-    private boolean busy=false;
+    private volatile boolean busy=false;
     private JSONObject chat;
     private Call streaming;
+    private String streamingChat="";
+    private long streamGeneration=0;
     private String terminal="",terminalGroup="android",filePath="";
     private int cursor=0;
     private String downloadPath="",downloadName="";
@@ -96,6 +98,7 @@ public class MainActivity extends Activity {
             card("智能体管理","选择、创建、启停与配置 Agent",()->navigate(()->resources("智能体","/agents","agents"),true));
             card("工作区文件","浏览、编辑、上传与下载",()->navigate(()->files(""),true));
             card("终端","远程命令与输出",()->navigate(this::terminals,true));
+            card("工具审批","查看并处理待审批执行请求",()->navigate(this::approvals,true));
             card("收件箱","任务通知与运行记录",()->navigate(()->readList("收件箱","/console/inbox/events?limit=50"),true));
         }
         section("云端部署");
@@ -205,6 +208,18 @@ public class MainActivity extends Activity {
         JSONObject spec=Api.obj("id",UUID.randomUUID().toString(),"name","新的定时任务","enabled",false,"save_result_to_inbox",true,"schedule",Api.obj("type","cron","cron","0 9 * * *","timezone","Asia/Shanghai"),"task_type","text","text","","dispatch",Api.obj("type","channel","channel","console","target",Api.obj("user_id","default","session_id","default"),"mode","final"));newForm("创建定时任务","/cron/jobs",spec);
     }
 
+    private void approvals(){
+        start("工具审批");if(!requireInstance())return;
+        task(()->api.instance("GET","/approval/list",null),value->{JSONArray list=Api.object(value).optJSONArray("pending_approvals");if(list==null||list.length()==0){note("当前没有待审批请求。");return;}
+            for(int i=0;i<list.length();i++){JSONObject pending=list.optJSONObject(i);if(pending==null)continue;card(pending.optString("tool_display_name",pending.optString("tool_name","工具执行")),pending.optString("reasoning",pending.optString("findings_summary","")),()->navigate(()->{
+                start("执行审批");body.addView(new NativeForm(this,pending,false).layout);
+                JSONObject payload=Api.obj("request_id",pending.optString("request_id"),"session_id",pending.optString("session_id"),"scope","exact");
+                body.addView(button("允许这次精确操作",()->change("允许以上工具按显示的参数执行？",()->api.instance("POST","/approval/approve",payload),this::back)));
+                body.addView(button("拒绝",()->change("拒绝这次工具执行？",()->api.instance("POST","/approval/deny",payload),this::back)));
+            },true));}
+        });
+    }
+
     private void chats(){
         start("对话");if(!requireInstance())return;
         if(streaming!=null)note("有一个任务正在运行，切回其会话查看结果。");
@@ -213,7 +228,7 @@ public class MainActivity extends Activity {
     }
     private void conversation(JSONObject c){
         start(name(c));if(!requireInstance())return;chat=c;String cid=id(c);int visit=epoch;
-        LinearLayout controls=row();controls.addView(button("停止任务",()->change("停止此会话当前运行的任务？",()->api.instance("POST","/console/chat/stop?chat_id="+Uri.encode(cid),null),()->{if(streaming!=null){streaming.cancel();streaming=null;}conversation(c);})));controls.addView(button("终端",()->navigate(this::terminals,true)));controls.addView(button("文件",()->navigate(()->files(""),true)));body.addView(controls);
+        LinearLayout controls=row();controls.addView(button("停止任务",()->change("停止此会话当前运行的任务？",()->api.instance("POST","/console/chat/stop?chat_id="+Uri.encode(cid),null),()->{if(streaming!=null&&streamingChat.equals(cid)){streamGeneration++;streaming.cancel();streaming=null;}conversation(c);})));controls.addView(button("终端",()->navigate(this::terminals,true)));controls.addView(button("文件",()->navigate(()->files(""),true)));body.addView(controls);
         LinearLayout messages=column();body.addView(messages);
         EditText compose=input("发消息，让 Agent 帮你完成任务","",false);compose.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_MULTI_LINE);compose.setMinLines(2);compose.setMaxLines(6);body.addView(compose);
         Button send=button("发送",()->{});body.addView(send);
@@ -221,9 +236,9 @@ public class MainActivity extends Activity {
         send.setOnClickListener(v->{String prompt=compose.getText().toString().trim();if(prompt.isEmpty())return;if(streaming!=null){info("已有任务运行中，请等待完成或停止");return;}
             compose.setText("");messages.addView(text("你",12,MUTED));messages.addView(text(prompt,15,INK));TextView response=text("Agent 正在处理…",15,INK);response.setTextIsSelectable(true);messages.addView(response);send.setEnabled(false);
             JSONObject request=Api.obj("input",new JSONArray().put(Api.obj("role","user","content",new JSONArray().put(Api.obj("type","text","text",prompt)))),"session_id",c.optString("session_id",cid),"user_id",c.optString("user_id","default"),"channel","console","stream",true,"request_context",Api.obj("chat_id",cid));
-            StreamState state=new StreamState();streaming=api.stream(request,new Api.StreamListener(){
+            StreamState state=new StreamState();long generation=++streamGeneration;streamingChat=cid;streaming=api.stream(request,new Api.StreamListener(){
                 public void event(JSONObject event){String merged=state.accept(event);handler.post(()->{if(epoch==visit&&!isFinishing()){if(!merged.isEmpty())response.setText(merged);if(event.has("error"))info("服务端报告执行错误，请刷新会话查看详情");}});}
-                public void done(Exception problem){handler.post(()->{streaming=null;if(epoch!=visit||isFinishing())return;send.setEnabled(true);if(problem!=null){failure(problem);response.append("\n连接已结束，可刷新会话查看服务端结果。");}else{info("本轮执行结束");task(()->api.instance("GET","/chats/"+Uri.encode(cid),null),history->{JSONArray a=Api.object(history).optJSONArray("messages");if(a!=null)for(int i=a.length()-1;i>=0;i--){JSONObject m=a.optJSONObject(i);if(m!=null&&m.optString("role").equals("assistant")){String t=Api.text(m.opt("content"));if(!t.isEmpty()){response.setText(t);break;}}}});}});}
+                public void done(Exception problem){handler.post(()->{if(generation!=streamGeneration)return;streaming=null;if(epoch!=visit||isFinishing())return;send.setEnabled(true);if(problem!=null){failure(problem);response.append("\n连接已结束，可刷新会话查看服务端结果。");}else{info("本轮执行结束");task(()->api.instance("GET","/chats/"+Uri.encode(cid),null),history->{JSONArray a=Api.object(history).optJSONArray("messages");if(a!=null)for(int i=a.length()-1;i>=0;i--){JSONObject m=a.optJSONObject(i);if(m!=null&&m.optString("role").equals("assistant")){String t=Api.text(m.opt("content"));if(!t.isEmpty()){response.setText(t);break;}}}});}});}
             });
         });
     }
@@ -279,15 +294,16 @@ public class MainActivity extends Activity {
     private void article(String id){
         start("社区帖子");String path="/api/v1/community/articles/"+Uri.encode(id);
         task(()->Api.unwrap(api.platform("GET",path,null)),v->{JSONObject a=Api.object(v);section(name(a));note(a.optString("author_name","")+" · "+a.optString("published_at",""));
-            String content=a.optString("content",a.optString("body",a.optString("markdown",a.optString("summary",""))));TextView t=text(content,16,INK);t.setTextIsSelectable(true);body.addView(t);
+            String content=a.optString("body_text",a.optString("summary",""));TextView t=text(content,16,INK);if(!a.optString("body_html").isEmpty())t.setText(android.text.Html.fromHtml(a.optString("body_html"),android.text.Html.FROM_HTML_MODE_COMPACT));t.setTextIsSelectable(true);body.addView(t);
             LinearLayout actions=row();actions.addView(button(a.optBoolean("liked")?"取消赞":"点赞",()->task(()->api.platform("POST",path+"/like",null),r->article(id))));actions.addView(button(a.optBoolean("favorited")?"取消收藏":"收藏",()->task(()->api.platform("POST",path+"/favorite",null),r->article(id))));body.addView(actions);
             section("回复");EditText reply=input("写下回复","",false);body.addView(reply);body.addView(button("发布回复",()->{String s=reply.getText().toString().trim();if(s.isEmpty())return;change("发布这条回复？",()->api.platform("POST",path+"/comments",Api.obj("content",s)),()->article(id));}));
-            task(()->Api.unwrap(api.platform("GET",path+"/comments?page=1&page_size=50",null)),comments->{JSONArray items=Api.array(comments);for(int i=0;i<items.length();i++){JSONObject c=items.optJSONObject(i);if(c==null)continue;card(c.optString("author_name","用户"),c.optString("content",c.optString("body","")),null);}});
+            task(()->Api.unwrap(api.platform("GET",path+"/comments?page=1&page_size=50",null)),comments->{JSONArray items=Api.array(comments);for(int i=0;i<items.length();i++){JSONObject c=items.optJSONObject(i);if(c==null)continue;card(c.optString("author_name","用户"),c.optString("content",c.optString("body_text","")),null);}});
         });
     }
     private void publish(boolean question){
-        start(question?"发布问题":"发布帖子");if(!requireAccount())return;EditText title=input("标题","",false),content=input("正文（支持 Markdown）","",false);content.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_MULTI_LINE);content.setMinLines(8);body.addView(title);body.addView(content);
-        body.addView(button("发布",()->{String h=title.getText().toString().trim(),b=content.getText().toString().trim();if(h.isEmpty()||b.isEmpty()){info("请填写标题和正文");return;}change("将此内容发布至公开社区？",()->api.platform("POST","/api/v1/community/"+(question?"questions":"articles"),Api.obj("title",h,"content",b,"tags",new JSONArray())),()->{history.clear();navigate(this::community,false);});}));
+        start(question?"发布问题":"发布帖子");if(!requireAccount())return;EditText title=input("标题","",false),content=input("正文","",false);content.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_MULTI_LINE);content.setMinLines(8);body.addView(title);body.addView(content);
+        Spinner category=new Spinner(this);String[] codes={"discussion","work_share","app_case","beginner_tutorial"};category.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,new String[]{"交流讨论","开发分享","应用案例","新手教程"}));if(!question)body.addView(category);
+        body.addView(button("发布",()->{String h=title.getText().toString().trim(),b=content.getText().toString().trim();if(h.isEmpty()||b.isEmpty()){info("请填写标题和正文");return;}change("将此内容发布至公开社区？",()->api.platform("POST","/api/v1/community/"+(question?"questions":"articles"),Api.obj("title",h,"article_type",question?"question":codes[category.getSelectedItemPosition()],"body_text",b,"body_html","<p>"+android.text.TextUtils.htmlEncode(b).replace("\n","</p><p>")+"</p>","tags",new JSONArray())),()->{history.clear();navigate(this::community,false);});}));
     }
     private void market(boolean plugin){
         start(plugin?"插件市场":"技能市场");String path="/api/v1/"+(plugin?"plugins":"skills");task(()->Api.unwrap(api.platform("GET",path+"?page=1&pageSize=30",null)),v->{JSONArray a=Api.array(v);for(int i=0;i<a.length();i++){JSONObject item=a.optJSONObject(i);if(item==null)continue;String identifier=id(item);card(item.optString("name",item.optString("skill_code",identifier)),item.optString("description",""),()->task(()->Api.unwrap(api.platform("GET",path+"/"+Uri.encode(identifier),null)),detail->{detail(plugin?"插件详情":"技能详情",detail);}));}note("市场安装及分页仍待适配。");});
