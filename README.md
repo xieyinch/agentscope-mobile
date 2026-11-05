@@ -1,37 +1,48 @@
-# AgentScope 随行 · Android
+# AgentScope 随行 · 独立 Android 客户端
 
-面向 AgentScope Platform / QwenPaw 的非官方安卓客户端，代码托管于 `xieyinch/idea-lab`。
+代码仓库：`xieyinch/idea-lab`。目标是完整重写 AgentScope Platform / QwenPaw 在手机上的页面与交互，优先覆盖全部 Agent 控制能力，同时提供社区、技能和插件市场。
 
-**核心目标：完整覆盖 Agent 控制面板，并逐项实现适合手机的原生操作界面，同时接入论坛社区、技能与插件市场。**
+**当前 0.2.0：原生开发预览。没有 WebView，没有加载官方网页，没有 JS 注入。尚未完成全部功能复刻与真机验收。**
 
-## 当前进度
+## 下载 APK
 
-0.1.0 是工程起点：原生底栏、页面管理与官方网页控制台。**尚未完成原生功能复刻，也未完成真机端到端验收。** 不将网页入口等同于每项功能已验证。
+进入本仓库 **Releases（发行页）** 下载 APK，附版本说明及 SHA256 校验文件。每次 main 提交通过云端单元测试、Lint 和编译后自动发布一个预发行版，同时在 Actions 保留构建产物与报告。
 
-- Agent / 社区 / 技能 / 插件 / 我的五个入口。
-- 保留各栏页面，站内共享 Cookie；登录仍由官方网站处理，代码不包含任何账户、密码、Cookie 或 API key。
-- 用户点击 Open QWENPAW 后可在应用内新窗口打开控制台，支持回退与关闭。
-- 系统文件选择上传、页面加载进度、网络失败重试、手机/桌面视图切换。
-- HTTPS、禁用混合内容与本地文件访问、不注入原生 JavaScript 桥、不忽略证书错误。
+最低 Android 8.0（API 26），通用 APK 无 CPU 架构限制。
 
-## 下载与云端构建
+测试包使用 debug 签名。若需要持续覆盖安装，在仓库 Actions Secret `ANDROID_DEBUG_KEYSTORE_BASE64` 中配置固定 debug keystore（Android 默认 debug 别名与密码）；未配置时各 runner 签名可能不同，需要卸载旧版本再安装。正式发行签名仍待配置。
 
-打开仓库 **Actions → Android APK → 成功的运行 → Artifacts**，下载 `agentscope-android-运行序号` 并解压安装 APK。
+## 原生页面
 
-每次推送 main、提交 PR 或手动运行，云端执行 `lintDebug assembleDebug`，输出通用测试 APK 与 SHA256 校验值；推送 `v*` 标签时自动发布预发行版。
+- **控制台**：平台部署列表、启动/停止/重启/升级/恢复/重置、日志与资源状态；连接 Agent 实例。
+- **对话**：历史记录、新建会话、SSE 流式文字、停止任务。
+- **配置**：智能体、运行配置、模型、工具、技能、MCP、ACP、频道、心跳、定时任务、环境变量、安全配置等。配置使用开关、文本、数值及嵌套原生表单，不让用户编辑原始 JSON。
+- **文件**：工作区目录、文本文件编辑及 ETag 冲突保护、上传（20 MB 上限）、系统文件保存下载。
+- **终端**：终端创建、输入、输出轮询、Ctrl+C / Tab / 方向键。当前为基础文本终端，尚未实现完整 VT 屏幕仿真。
+- **社区**：列表、搜索、详情、点赞、收藏、发帖、提问与回复；技能/插件市场列表和详情。
 
-测试 APK 使用 Android debug 签名。若需跨构建覆盖安装，请在 GitHub Actions secret `ANDROID_DEBUG_KEYSTORE_BASE64` 保存你自己的固定 debug keystore（Android 默认 debug 密码与别名），否则不同 runner 的临时签名可能不同，需要卸载旧版再安装。正式发行前应配置独立 release 签名。
+这些是代码已实现的页面与接口路径，**不代表已完成真实服务端端到端验证**。具体缺口见 [功能清单](docs/FEATURES.md)。
 
-## 构建环境
+## 登录与连接
 
-- JDK 17，Gradle 8.9，Android Gradle Plugin 8.7.3。
-- Android SDK 35 / Build Tools 35.0.0；最低 Android 8.0（API 26）。
-- 本地安装上述工具后执行 `gradle lintDebug assembleDebug`。本仓库暂未包含 Gradle Wrapper；CI 会安装固定版本 Gradle。
+1. 在 App 的「我的」或控制台使用平台邮箱密码登录。密码只用于官方登录请求，不保存。
+2. 在部署列表选择已有部署，点击「连接 Agent 控制台」。客户端根据平台返回的访问入口获取实例信息。
+3. 也可通过「连接实例」配置自己的 HTTPS QwenPaw 地址及实例访问令牌。
 
-## 仍需完成
+平台 Token 与实例 Token 分别存储，通过 Android Keystore 的 AES-GCM 加密，平台 Token 只发送到官方平台，禁止自动跨域重定向和明文 HTTP。接口错误会显示失败，不以占位数据假装成功。
 
-见 [控制台功能清单](docs/FEATURES.md)。尤其是原生 API 适配、流式对话、终端、文件管理、模型与多智能体配置等，必须逐项实现并验收。
+## 构建
 
-当前受限：录音/语音输入尚未适配；需登录的下载会交给系统浏览器且不会转交凭据；第三方 OAuth 可能拒绝内嵌 WebView；控制台响应式布局与终端键盘需真机测试。登录失效遵循服务端规则，不能承诺永久登录。
+JDK 17、Gradle 8.9、Android Gradle Plugin 8.7.3、SDK 35 / Build Tools 35.0.0。
 
-本项目与 AgentScope 官方无隶属关系。不复制官方商标、账号数据或私密配置；Agent 后端仍使用用户自己的官方服务。
+```
+gradle testDebugUnitTest lintDebug assembleDebug
+```
+
+CI 会安装固定工具版本；当前暂未附带 Gradle Wrapper。测试覆盖流式文本合并，完整真机/UI/网络异常测试仍需进行。
+
+## 接口依据与边界
+
+平台接口依据 platform.agentscope.io 公开前端 0.2.5 中的请求定义；实例接口依据 [QwenPaw 官方源码](https://github.com/agentscope-ai/QwenPaw/tree/main/console/src/api)。平台 API 与实例 API 分开适配。未提交用户实例地址、登录信息或私密配置。
+
+项目为非官方客户端，与 AgentScope 官方无隶属关系。首次版本尚不能承诺与平台全部功能等价。

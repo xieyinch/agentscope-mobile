@@ -9,7 +9,7 @@ permissions:
   contents: read
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
@@ -36,7 +36,7 @@ jobs:
       - name: Lint and build installable test APK
         env:
           BUILD_NUMBER: ${{ github.run_number }}
-        run: gradle --no-daemon lintDebug assembleDebug
+        run: gradle --no-daemon testDebugUnitTest lintDebug assembleDebug
       - name: Package
         run: |
           mkdir -p dist
@@ -54,12 +54,13 @@ jobs:
           path: app/build/reports/
           if-no-files-found: ignore
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name != 'pull_request'
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           name: agentscope-android-${{ github.run_number }}
@@ -68,5 +69,5 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          TAG: ${{ github.ref_name }}
-        run: gh release create "$TAG" dist/* --repo "$REPO" --title "$TAG" --prerelease --notes 'Android test build. Embedded official web console; native feature migration is in progress. Signing continuity requires ANDROID_DEBUG_KEYSTORE_BASE64.'
+          TAG: native-0.2.0-build-${{ github.run_number }}
+        run: gh release create "$TAG" dist/* --repo "$REPO" --title "AgentScope Android $TAG" --prerelease --notes-file RELEASE_NOTES.md
