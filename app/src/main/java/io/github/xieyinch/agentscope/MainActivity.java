@@ -364,6 +364,7 @@ public class MainActivity extends Activity {
         final boolean[] expanded={false};expand.setOnClickListener(v->{expanded[0]=!expanded[0];full.setMaxLines(expanded[0]?Integer.MAX_VALUE:4);full.setEllipsize(expanded[0]?null:android.text.TextUtils.TruncateAt.END);expand.setText(expanded[0]?"收起":"展开全文");});
         full.post(()->{if(full.getLayout()!=null&&full.getLayout().getLineCount()>0){int last=full.getLayout().getLineCount()-1;if(full.getLayout().getEllipsisCount(last)>0||full.getLayout().getLineCount()>4)expand.setVisibility(View.VISIBLE);}});
         LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(-1,-2);params.bottomMargin=dp(10);parent.addView(card,params);
+        JSONArray replies=comment.optJSONArray("replies");if(replies!=null&&replies.length()>0){LinearLayout nested=column();nested.setPadding(dp(16),0,0,0);parent.addView(nested);for(int i=0;i<replies.length();i++){JSONObject reply=replies.optJSONObject(i);if(reply!=null)commentView(nested,reply);}}
     }
     private void loadComments(String path,LinearLayout container,int page,java.util.Set<String> seen){
         Button more=button(page==1?"加载回复":"加载更多回复",()->{});container.addView(more);
