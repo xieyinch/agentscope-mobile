@@ -37,7 +37,7 @@ public final class ConsoleBridge {
         }catch(Exception error){Toast.makeText(activity,"控制台暂时无法打开："+error.getMessage(),Toast.LENGTH_LONG).show();}
     }
     public static void disconnect(Context context){
-        PawApplication app=(PawApplication)context.getApplicationContext();Runnable clear=()->{if(app.chat!=null)app.chat.forgetManaged();app.chat=null;};if(android.os.Looper.myLooper()==android.os.Looper.getMainLooper())clear.run();else new android.os.Handler(android.os.Looper.getMainLooper()).post(clear);
+        PawApplication app=(PawApplication)context.getApplicationContext();Runnable clear=()->{if(app.chat!=null)app.chat.closeManaged();app.chat=null;};if(android.os.Looper.myLooper()==android.os.Looper.getMainLooper())clear.run();else new android.os.Handler(android.os.Looper.getMainLooper()).post(clear);
         synchronized(ConsoleBridge.class){for(java.lang.ref.WeakReference<OkHttpClient> ref:clients){OkHttpClient client=ref.get();if(client!=null){client.dispatcher().cancelAll();client.connectionPool().evictAll();}}for(java.lang.ref.WeakReference<Api> ref:sessions){Api session=ref.get();if(session!=null)session.clearMemorySession();}sessions.clear();clients.clear();}
         ApiClient.useTransport(new OkHttpClient.Builder().followRedirects(false).followSslRedirects(false).build());
     }

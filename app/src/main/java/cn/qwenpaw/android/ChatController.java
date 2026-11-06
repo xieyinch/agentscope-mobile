@@ -91,6 +91,7 @@ public final class ChatController {
         Json.put(account,"managed",true);vault.saveToken(id,runtimeToken);if(accountId.equals(id)&&loggedIn&&base.equals(address)){token=runtimeToken;saveAccounts();return;}
         saveDraft();invalidate();resetWorkspace();load(account);saveAccounts();status="已连接平台工作空间";
     }
+    public void closeManaged(){forgetManaged();io.shutdownNow();main.removeCallbacksAndMessages(null);}
     public void forgetManaged(){logout();JSONArray keep=new JSONArray();for(int i=0;i<accounts.length();i++){JSONObject account=accounts.optJSONObject(i);if(account==null)continue;if(account.optBoolean("managed")){vault.forget(account.optString("id"));}else keep.put(account);}accounts=keep;saveAccounts();}
     public ApiClient api() {return new ApiClient(base,token,agent);}
     public long scope() {return generation;}

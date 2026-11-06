@@ -59,10 +59,10 @@ final class NativeForm {
             if(editable){Button add=plainButton();add.setText("添加列表项");parent.addView(add);add.setOnClickListener(v->new AlertDialog.Builder(context).setTitle("新条目类型").setItems(new String[]{"文本","数值","配置组"},(d,w)->appendItem(list,readers,deleted,w==1?0:w==2?new JSONObject():"",depth)).show());}
             return ()->{JSONArray out=new JSONArray();for(int i=0;i<readers.size();i++)if(!deleted.get(i))out.put(readers.get(i).get());return out;};
         }
-        if(!editable){TextView text=new TextView(context);String lower=key.toLowerCase(Locale.ROOT);boolean hidden=lower.contains("password")||lower.contains("token")||lower.contains("secret")||lower.contains("api_key")||lower.equals("authorization")||lower.equals("cookie");text.setText(hidden&&!Api.text(value).isEmpty()?"已设置（隐藏）":Api.text(value));text.setTextIsSelectable(true);text.setTextSize(16);text.setTextColor(ui.ink);text.setPadding(0,0,0,8);parent.addView(text);return ()->value;}
+        if(!editable){TextView text=new TextView(context);String lower=key.toLowerCase(Locale.ROOT);boolean hidden=ControlSchemas.secretField(key);text.setText(hidden&&!Api.text(value).isEmpty()?"已设置（隐藏）":Api.text(value));text.setTextIsSelectable(true);text.setTextSize(16);text.setTextColor(ui.ink);text.setPadding(0,0,0,8);parent.addView(text);return ()->value;}
         EditText input=new EditText(context);input.setText(value==null||value==JSONObject.NULL?"":String.valueOf(value));input.setTextSize(17);input.setTextColor(ui.ink);input.setHintTextColor(ui.muted);input.setPadding(Ui.dp(context,12),Ui.dp(context,12),Ui.dp(context,12),Ui.dp(context,12));input.setBackground(Ui.shape(context,ui.secondary,10));input.setMinimumHeight(Ui.dp(context,48));
         String lower=key.toLowerCase(Locale.ROOT);
-        boolean secret=lower.contains("password")||lower.contains("token")||lower.contains("secret")||lower.contains("api_key")||lower.equals("authorization")||lower.equals("cookie");
+        boolean secret=ControlSchemas.secretField(key);
         if(secret){input.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);input.setTypeface(Typeface.DEFAULT);}
         else if(value instanceof Number)input.setInputType(InputType.TYPE_CLASS_NUMBER|InputType.TYPE_NUMBER_FLAG_DECIMAL|InputType.TYPE_NUMBER_FLAG_SIGNED);
         else {input.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_MULTI_LINE);input.setMaxLines(8);}
