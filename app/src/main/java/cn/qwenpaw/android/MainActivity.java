@@ -133,7 +133,7 @@ public final class MainActivity extends AppCompatActivity implements ChatControl
         TextView privacy=text("默认不保存密码 · 登录令牌加密存储在本机",11,MUTED);privacy.setGravity(Gravity.CENTER);form.addView(privacy);
         TextView protocolNote=text("建议使用 HTTPS 保护连接",11,MUTED);protocolNote.setGravity(Gravity.CENTER);design.gap(form,6);form.addView(protocolNote);
         if(c.accounts.length()>0)form.addView(button("切换或添加账户（"+c.accounts.length()+"）",v->accounts()));
-        form.addView(button("检查更新 · "+updater.version(),"模型与供应商管理",v->updater.check(true)));
+        form.addView(button("检查更新 · "+updater.version(),v->updater.check(true)));
         if(c.loggedIn)form.addView(button("返回聊天",v->{c.cancelLogin();showChat();}));
     }
     private void showChat(){

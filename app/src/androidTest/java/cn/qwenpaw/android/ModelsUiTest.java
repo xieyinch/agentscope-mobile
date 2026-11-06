@@ -19,6 +19,7 @@ import static org.junit.Assert.*;
 @RunWith(AndroidJUnit4.class)
 public class ModelsUiTest {
     private ChatController chat;
+    private final java.util.concurrent.CountDownLatch languageGate=new java.util.concurrent.CountDownLatch(1);
     private JSONObject provider;
     private final AtomicReference<JSONObject> saved=new AtomicReference<>();
     private final AtomicReference<JSONObject> imported=new AtomicReference<>();
@@ -26,7 +27,11 @@ public class ModelsUiTest {
         provider=Json.obj("id","fixture","name","测试供应商","base_url","https://provider.example/v1","api_key","configured","enabled",true,"support_model_discovery",true,"models",Json.arr(Json.obj("id","base-model","name","基础模型","generate_kwargs",Json.obj("custom_option",true))),"extra_models",new JSONArray());
         ApiClient.useTransport(new OkHttpClient.Builder().addInterceptor(chain->{Request r=chain.request();String path=r.url().encodedPath();int code=200;Object data=new JSONObject();
             try{
-                if(path.equals("/api/models"))data=Json.arr(provider);
+                if(path.equals("/api/workspace/running-config"))data=Json.obj("shell_command_timeout",60,"shell_command_executable","/bin/bash","memory_manager_backend","simple","auto_title_config",Json.obj("enabled",true));
+                else if(path.equals("/api/workspace/language")){languageGate.await(5,java.util.concurrent.TimeUnit.SECONDS);data=Json.obj("language","zh");}
+                else if(path.equals("/api/agents/memory/backends"))data=Json.arr(Json.obj("id","simple","label","基础记忆","available",true));
+                else if(path.equals("/api/config/user-timezone")){code=404;data=Json.obj("detail","unsupported");}
+                else if(path.equals("/api/models"))data=Json.arr(provider);
                 else if(path.equals("/api/models/active"))data=Json.obj("active_llm",Json.obj("provider_id","fixture","model","base-model"));
                 else if(path.endsWith("/test"))data=Json.obj("success",false,"message","连接测试失败：密钥无效");
                 else if(path.endsWith("/discover")){assertEquals("false",r.url().queryParameter("save"));data=Json.obj("success",true,"models",Json.arr(Json.obj("id","vendor/new-model","name","发现的新模型")));}
@@ -39,7 +44,7 @@ public class ModelsUiTest {
         }).build());
         InstrumentationRegistry.getInstrumentation().runOnMainSync(()->{try{chat=((PawApplication)InstrumentationRegistry.getInstrumentation().getTargetContext().getApplicationContext()).ensureChat();chat.bindManaged("https://models-fixture.invalid","fixture-runtime-token","default");}catch(Exception e){throw new AssertionError(e);}});
     }
-    @After public void clear(){InstrumentationRegistry.getInstrumentation().runOnMainSync(()->chat.forgetManaged());}
+    @After public void clear(){languageGate.countDown();InstrumentationRegistry.getInstrumentation().runOnMainSync(()->chat.forgetManaged());}
     private View find(View root,String label){if(label.equals(String.valueOf(root.getContentDescription()))||root instanceof TextView t&&label.contentEquals(t.getText()))return root;if(root instanceof ViewGroup g)for(int i=0;i<g.getChildCount();i++){View found=find(g.getChildAt(i),label);if(found!=null)return found;}return null;}
     private ListView list(View root){if(root instanceof ListView l)return l;if(root instanceof ViewGroup g)for(int i=0;i<g.getChildCount();i++){ListView result=list(g.getChildAt(i));if(result!=null)return result;}return null;}
     private void await(java.util.function.BooleanSupplier ready)throws Exception{for(int i=0;i<180;i++){AtomicBoolean ok=new AtomicBoolean();InstrumentationRegistry.getInstrumentation().runOnMainSync(()->ok.set(ready.getAsBoolean()));if(ok.get())return;Thread.sleep(30);}fail("Model UI did not settle");}
@@ -56,7 +61,16 @@ public class ModelsUiTest {
             await(()->saved.get()!=null&&editor(activity.get())==null&&find(activity.get().getWindow().getDecorView(),"自动发现").isEnabled());assertFalse(saved.get().has("api_key"));assertFalse(saved.get().optBoolean("auto_discover",true));
             scene.onActivity(a->find(a.getWindow().getDecorView(),"自动发现").performClick());
             AtomicReference<AlertDialog> preview=new AtomicReference<>();await(()->{try{java.lang.reflect.Field f=ModelsActivity.class.getDeclaredField("discoveryDialog");f.setAccessible(true);preview.set((AlertDialog)f.get(activity.get()));return preview.get()!=null&&preview.get().isShowing();}catch(Exception e){throw new AssertionError(e);}});
-            scene.onActivity(a->find(preview.get().getWindow().getDecorView(),"全选").performClick());screenshot("22-model-discovery");scene.onActivity(a->preview.get().getButton(AlertDialog.BUTTON_POSITIVE).performClick());await(()->imported.get()!=null);assertEquals("vendor/new-model",imported.get().optString("id"));
+            scene.onActivity(a->find(preview.get().getWindow().getDecorView(),"全选").performClick());screenshot("22-model-discovery");scene.onActivity(a->preview.get().getButton(AlertDialog.BUTTON_POSITIVE).performClick());await(()->imported.get()!=null);assertEquals("vendor/new-model",imported.get().optString("id"));await(()->find(activity.get().getWindow().getDecorView(),"已添加 1 个模型")!=null);scene.onActivity(a->assertEquals(2,list(a.getWindow().getDecorView()).getAdapter().getCount()));screenshot("24-model-imported");
+        }
+    }
+    @Test public void optionalConfigurationResultsDoNotReplaceFocusedRuntimeEdits()throws Exception{
+        AtomicReference<SettingsActivity> activity=new AtomicReference<>();AtomicReference<EditText> input=new AtomicReference<>();
+        try(ActivityScenario<SettingsActivity> scene=ActivityScenario.launch(SettingsActivity.class)){
+            scene.onActivity(activity::set);await(()->activity.get().getWindow().getDecorView().findViewWithTag("shell_command_timeout")!=null);
+            scene.onActivity(a->{EditText field=(EditText)a.getWindow().getDecorView().findViewWithTag("shell_command_timeout");input.set(field);field.requestFocus();field.setText("321");});languageGate.countDown();
+            await(()->{try{java.lang.reflect.Field f=SettingsActivity.class.getDeclaredField("extrasPending");f.setAccessible(true);return f.getInt(activity.get())==0;}catch(Exception e){throw new AssertionError(e);}});
+            scene.onActivity(a->{assertSame(input.get(),a.getWindow().getDecorView().findViewWithTag("shell_command_timeout"));assertEquals("321",input.get().getText().toString());assertTrue(input.get().hasFocus());assertNotNull(find(a.getWindow().getDecorView(),"用户时区：当前服务器未提供"));});
         }
     }
     @Test public void environmentVariablesRemainUsableWhenOptionalCatalogIsUnsupported()throws Exception{
