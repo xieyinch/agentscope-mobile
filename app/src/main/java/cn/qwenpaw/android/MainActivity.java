@@ -64,7 +64,7 @@ public final class MainActivity extends AppCompatActivity implements ChatControl
     private final Handler ui=new Handler(Looper.getMainLooper());
     private Parcelable listState;
     @Override public void onCreate(Bundle state) {
-        Ui.configure(this);INK=Ui.INK;MUTED=Ui.MUTED;ACCENT=Ui.GREEN;BG=Ui.BG;super.onCreate(state);design=new Ui(this);updater=new AppUpdater(this);
+        super.onCreate(state);design=new Ui(this);INK=Ui.INK;MUTED=Ui.MUTED;ACCENT=Ui.GREEN;BG=Ui.BG;updater=new AppUpdater(this);
         PawApplication app=(PawApplication)getApplication();
         if(app.needsRecovery()){openRecovery();return;}
         try {
@@ -173,7 +173,7 @@ public final class MainActivity extends AppCompatActivity implements ChatControl
         LinearLayout modes=row();loopButton=design.chip("Loop","loop",v->loopModes());design.tone((MaterialButton)loopButton,Color.TRANSPARENT,MUTED);modes.addView(loopButton,new LinearLayout.LayoutParams(-2,dp(48)));levelButton=design.chip("自动模式","shield",v->approvalModes());design.tone((MaterialButton)levelButton,Color.TRANSPARENT,MUTED);modes.addView(levelButton,new LinearLayout.LayoutParams(-2,dp(48)));modes.addView(new View(this),new LinearLayout.LayoutParams(0,1,1));usageButton=design.chip("用量",null,v->contextUsage());usageButton.setContentDescription("上下文用量");modes.addView(usageButton,new LinearLayout.LayoutParams(-2,dp(48)));page.addView(modes);
         LinearLayout tools=row();tools.addView(design.iconButton("添加附件","plus",v->pickFiles()));MaterialButton commands=design.button("命令","command",false,v->commands());commands.setContentDescription("快捷命令");design.tone(commands,Color.TRANSPARENT,MUTED);tools.addView(commands,new LinearLayout.LayoutParams(-2,dp(48)));
         MaterialButton navigation=design.button("导航","menu",false,v->questionNavigation());navigation.setContentDescription("对话导航");navigation.setSingleLine(true);design.tone(navigation,Color.TRANSPARENT,MUTED);tools.addView(navigation,new LinearLayout.LayoutParams(-2,dp(48)));tools.addView(new View(this),new LinearLayout.LayoutParams(0,1,1));
-        send=design.iconButton("发送","arrow",v->{if(c.running)c.stop();else c.send();});design.tone((MaterialButton)send,ACCENT,Ui.WHITE);tools.addView(send);composer.addView(tools);page.addView(composer);changed();
+        send=design.iconButton("发送","arrow",v->{if(c.running)c.stop();else c.send();});design.tone((MaterialButton)send,ACCENT,Color.WHITE);tools.addView(send);composer.addView(tools);page.addView(composer);changed();
         if(listState!=null){list.getLayoutManager().onRestoreInstanceState(listState);listState=null;}
     }
     private View welcome(){
@@ -211,7 +211,7 @@ public final class MainActivity extends AppCompatActivity implements ChatControl
         List<Transcript.Row> rows=c.transcript.rows();adapter.update(rows);empty.setVisibility(rows.isEmpty()?View.VISIBLE:View.GONE);
         renderPrompts();renderAttachments();renderApprovals();followChanged();if(c.autoFollow)scrollBottom();
     }
-    private void updateSend(){if(send==null)return;send.setContentDescription(c.stopping()?"正在停止":c.running?"停止":"发送");((MaterialButton)send).setIcon(new Ui.Glyph(c.running?"stop":"arrow",Ui.WHITE));send.setEnabled(!c.stopping() && (c.running || (!c.busy && c.uploads==0 && (!c.draft.isBlank() || !c.attachments.isEmpty()))));}
+    private void updateSend(){if(send==null)return;send.setContentDescription(c.stopping()?"正在停止":c.running?"停止":"发送");((MaterialButton)send).setIcon(new Ui.Glyph(c.running?"stop":"arrow",Color.WHITE));send.setEnabled(!c.stopping() && (c.running || (!c.busy && c.uploads==0 && (!c.draft.isBlank() || !c.attachments.isEmpty()))));}
     private void resumeFollowAtBottom(){
         if(list==null||c.autoFollow||list.canScrollVertically(1))return;
         c.autoFollow=true;c.expanded.clear();adapter.update(c.transcript.rows());followChanged();scrollBottom();
