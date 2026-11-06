@@ -28,7 +28,7 @@ public final class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.Ho
     private static final Pattern MERMAID=Pattern.compile("(?m)^\\s*```mermaid[^\\n]*\\n([\\s\\S]*?)^\\s*```\\s*$");
     public MessageAdapter(ConsoleFragment activity,ChatController controller) {
         this.activity=activity;c=controller;
-        markdown=ChatMarkdown.create(activity.requireContext());
+        markdown=ChatMarkdown.create(activity);
     }
     public void update(List<Transcript.Row> source) {
         List<Transcript.Row> next=ProcessGroups.project(source,c.running,c.expanded);

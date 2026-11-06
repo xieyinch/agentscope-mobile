@@ -598,7 +598,7 @@ public final class ConsoleFragment extends androidx.fragment.app.Fragment implem
             }
             String body=new String(bytes,java.nio.charset.StandardCharsets.UTF_8);file.delete();
             boolean isMarkdown=AttachmentPreview.markdown(name);
-            io.noties.markwon.Markwon previewMarkdown=isMarkdown?ChatMarkdown.create(context):null;
+            io.noties.markwon.Markwon previewMarkdown=isMarkdown?ChatMarkdown.create(this):null;
             // Parse the entire Markdown document before paging, preserving fences and references.
             CharSequence display=isMarkdown?previewMarkdown.toMarkdown(body):AttachmentPreview.formatText(name,body);
             final int pageSize=32768;int pages=Math.max(1,(display.length()+pageSize-1)/pageSize);final int[] page={0};
