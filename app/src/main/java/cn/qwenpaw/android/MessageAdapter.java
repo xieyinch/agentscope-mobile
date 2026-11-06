@@ -15,7 +15,7 @@ import java.util.*;
 import java.util.regex.*;
 
 public final class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.Holder> {
-    private final ConsoleFragment activity;
+    private final MainActivity activity;
     private final ChatController c;
     private final Markwon markdown;
     private List<Transcript.Row> rows=new ArrayList<>();
@@ -26,7 +26,7 @@ public final class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.Ho
     };
     private boolean following=true;
     private static final Pattern MERMAID=Pattern.compile("(?m)^\\s*```mermaid[^\\n]*\\n([\\s\\S]*?)^\\s*```\\s*$");
-    public MessageAdapter(ConsoleFragment activity,ChatController controller) {
+    public MessageAdapter(MainActivity activity,ChatController controller) {
         this.activity=activity;c=controller;
         markdown=ChatMarkdown.create(activity);
     }
@@ -87,9 +87,9 @@ public final class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.Ho
             });ui.tone(toggle,Color.TRANSPARENT,Ui.MUTED);toggle.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);toggle.setIconGravity(MaterialButton.ICON_GRAVITY_START);toggle.setTextSize(12);toggle.setSingleLine(true);toggle.setEllipsize(TextUtils.TruncateAt.END);toggle.setContentDescription((open?"收起":"展开")+toggle.getText());
             LinearLayout header=ui.row();header.addView(toggle,new LinearLayout.LayoutParams(0,activity.dp(48),1));ImageView arrow=ui.icon(open?"chevron":"right",Ui.MUTED,16);header.addView(arrow);h.box.addView(header);
             if(!open)return;
-            ProcessScrollBehavior scroll=new ProcessScrollBehavior(activity.requireContext(),activity.dp(6),this::pauseReading,()->c.autoFollow,processScrollPositions.getOrDefault(r.id,0));scroll.setFillViewport(false);scroll.setContentDescription("思考或工具详情，可在内容区上下滑动");
+            ProcessScrollBehavior scroll=new ProcessScrollBehavior(activity,activity.dp(6),this::pauseReading,()->c.autoFollow,processScrollPositions.getOrDefault(r.id,0));scroll.setFillViewport(false);scroll.setContentDescription("思考或工具详情，可在内容区上下滑动");
             scroll.setOnScrollChangeListener((view,x,y,oldX,oldY)->processScrollPositions.put(r.id,y));
-            TextView content=activity.text((r.params.isEmpty()?"":r.params+"\n\n")+r.text,12,ConsoleFragment.MUTED);content.setTypeface(Typeface.MONOSPACE);content.setPadding(activity.dp(12),activity.dp(4),activity.dp(12),activity.dp(12));content.setLineSpacing(activity.dp(4),1);
+            TextView content=activity.text((r.params.isEmpty()?"":r.params+"\n\n")+r.text,12,MainActivity.MUTED);content.setTypeface(Typeface.MONOSPACE);content.setPadding(activity.dp(12),activity.dp(4),activity.dp(12),activity.dp(12));content.setLineSpacing(activity.dp(4),1);
             content.setTextIsSelectable(true);scroll.addView(content);
             watchSelection(content);
             h.box.addView(scroll,new LinearLayout.LayoutParams(-1,activity.dp(220)));return;
@@ -107,7 +107,7 @@ public final class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.Ho
         while(matcher.find()) {
             markdown(h.box,r.text.substring(end,matcher.start()),intermediate,r.done);String source=matcher.group(1);
             if(r.done && source.length()<=50000) {
-                LinearLayout diagramCard=ui.column();diagramCard.setBackground(ui.shape(Ui.WHITE,18,Ui.LINE));diagramCard.setClipToOutline(true);ui.gap(diagramCard,8);DiagramView diagram=new DiagramView(activity.requireContext(),source);diagramCard.addView(diagram,new LinearLayout.LayoutParams(-1,activity.dp(250)));
+                LinearLayout diagramCard=ui.column();diagramCard.setBackground(ui.shape(Ui.WHITE,18,Ui.LINE));diagramCard.setClipToOutline(true);ui.gap(diagramCard,8);DiagramView diagram=new DiagramView(activity,source);diagramCard.addView(diagram,new LinearLayout.LayoutParams(-1,activity.dp(250)));
                 MaterialButton zoom=ui.button("查看图表源码","search",false,v->activity.diagram(source));ui.tone(zoom,Color.TRANSPARENT,Ui.GREEN);diagramCard.addView(zoom);h.box.addView(diagramCard);ui.gap(h.box,8);
             } else markdown(h.box,"```mermaid\n"+source+"\n```",intermediate,r.done);
             end=matcher.end();
@@ -117,7 +117,7 @@ public final class MessageAdapter extends RecyclerView.Adapter<MessageAdapter.Ho
         h.box.setOnLongClickListener(v->{activity.copy(r.text);return true;});
     }
     private void markdown(LinearLayout parent,String source,boolean intermediate,boolean cache){
-        if(source.isBlank())return;TextView text=activity.text("",intermediate?13:15,intermediate?0xff52615a:ConsoleFragment.INK);text.setTextIsSelectable(true);text.setLinkTextColor(Ui.GREEN);text.setLineSpacing(activity.dp(intermediate?3:5),1);text.setPadding(0,activity.dp(2),0,activity.dp(2));
+        if(source.isBlank())return;TextView text=activity.text("",intermediate?13:15,intermediate?0xff52615a:MainActivity.INK);text.setTextIsSelectable(true);text.setLinkTextColor(Ui.GREEN);text.setLineSpacing(activity.dp(intermediate?3:5),1);text.setPadding(0,activity.dp(2),0,activity.dp(2));
         Spanned parsed=parsedMarkdown.get(source);if(parsed==null){parsed=markdown.toMarkdown(source);if(cache)parsedMarkdown.put(source,parsed);}
         markdown.setParsedMarkdown(text,parsed);
         watchSelection(text);parent.addView(text);

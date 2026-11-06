@@ -6,15 +6,8 @@ import java.util.*;
 /** Backend contracts shared by native model selection and chat attachments. */
 final class ChatContent {
     static JSONArray models(JSONObject provider){
-        JSONArray out=new JSONArray();Set<String> ids=new HashSet<>();
-        for(String key:new String[]{"models","extra_models"}){
-            JSONArray entries=provider.optJSONArray(key);if(entries==null)continue;
-            for(int i=0;i<entries.length();i++){JSONObject model=entries.optJSONObject(i);if(model==null)continue;
-                String id=CommunityContent.first(model,"id");
-                if(!id.isEmpty()&&ids.add(id)&&!"decision".equals(model.optString("model_type")))out.put(model);
-            }
-        }
-        return out;
+        JSONArray out=new JSONArray(),entries=cn.qwenpaw.android.ModelCatalog.entries(provider,false);
+        for(int i=0;i<entries.length();i++){JSONObject model=entries.optJSONObject(i);if(cn.qwenpaw.android.ModelCatalog.chatModel(model))out.put(model);}return out;
     }
     static JSONObject selection(String provider,String model,String agent){
         return Api.obj("provider_id",provider,"model",model,"model_type","chat","scope","agent","agent_id",agent);

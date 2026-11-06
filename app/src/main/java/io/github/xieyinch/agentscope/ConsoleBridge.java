@@ -27,21 +27,13 @@ public final class ConsoleBridge {
                 return chain.proceed(retry.build());
             }).build();
     }
-    public static void open(Activity activity){if(activity instanceof MainActivity shell){shell.showPlatformTab(1);return;}open(activity,cn.qwenpaw.android.MainActivity.class,-1);}
-    public static void prepare(Activity activity) throws Exception {
-        prepare(activity,new Api(new SecretStore(activity)));
-    }
-    static void prepare(Activity activity,Api api) throws Exception {
-        if(!api.connected())throw new IOException("请先连接工作空间");
-        OkHttpClient transport=transport(api);
-        synchronized(ConsoleBridge.class){sessions.removeIf(ref->ref.get()==null);clients.removeIf(ref->ref.get()==null);sessions.add(new java.lang.ref.WeakReference<>(api));clients.add(new java.lang.ref.WeakReference<>(transport));}
-        ((PawApplication)activity.getApplication()).ensureChat().bindManaged(api.base(),api.secrets.get("instanceToken"),activity.getSharedPreferences("MainActivity",0).getString("agent","default"));
-        ApiClient.useTransport(transport);
-    }
+    public static void open(Activity activity){open(activity,cn.qwenpaw.android.MainActivity.class,-1);}
     public static void open(Activity activity,Class<?> page,int section){
         Api api=new Api(new SecretStore(activity));if(!api.connected()){Toast.makeText(activity,"请先连接工作空间",Toast.LENGTH_SHORT).show();return;}
         try{
-            prepare(activity);Intent intent=new Intent(activity,page);if(section>=0)intent.putExtra("page",section);if(page==cn.qwenpaw.android.SkillsActivity.class&&section==1)intent.putExtra("pool",true);activity.startActivity(intent);
+            OkHttpClient transport=transport(api);synchronized(ConsoleBridge.class){sessions.removeIf(ref->ref.get()==null);clients.removeIf(ref->ref.get()==null);sessions.add(new java.lang.ref.WeakReference<>(api));clients.add(new java.lang.ref.WeakReference<>(transport));}PawApplication app=(PawApplication)activity.getApplication();
+            app.ensureChat().bindManaged(api.base(),api.secrets.get("instanceToken"),activity.getSharedPreferences("MainActivity",0).getString("agent","default"));
+            ApiClient.useTransport(transport);Intent intent=new Intent(activity,page);if(section>=0)intent.putExtra("page",section);if(page==cn.qwenpaw.android.SkillsActivity.class&&section==1)intent.putExtra("pool",true);activity.startActivity(intent);
         }catch(Exception error){Toast.makeText(activity,"控制台暂时无法打开："+error.getMessage(),Toast.LENGTH_LONG).show();}
     }
     public static boolean busy(Context context){PawApplication app=(PawApplication)context.getApplicationContext();return app.chat!=null&&(app.chat.running||app.chat.busy||app.chat.uploads>0);}

@@ -7,6 +7,7 @@
         <activity android:name="cn.qwenpaw.android.MainActivity" android:theme="@style/ConsoleTheme" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <activity android:name="cn.qwenpaw.android.SkillsActivity" android:theme="@style/ConsoleTheme" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <activity android:name="cn.qwenpaw.android.ToolsActivity" android:theme="@style/ConsoleTheme" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity android:name="cn.qwenpaw.android.ModelsActivity" android:theme="@style/ConsoleTheme" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <activity android:name="cn.qwenpaw.android.SettingsActivity" android:theme="@style/ConsoleTheme" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <activity android:name="cn.qwenpaw.android.AgentDocumentsActivity" android:theme="@style/ConsoleTheme" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <activity android:name="cn.qwenpaw.android.AccountActivity" android:theme="@style/ConsoleTheme" android:exported="false" android:windowSoftInputMode="adjustResize" />

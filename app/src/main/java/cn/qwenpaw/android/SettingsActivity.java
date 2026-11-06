@@ -34,7 +34,11 @@ public final class SettingsActivity extends AppCompatActivity {
     private String language="",timezone="",envQuery="",error="",trendError="",extrasError="";
     private Boolean coding;
     private long contextLimit;
-    private int page,section,revision,trendRevision;
+    private int page,section,revision,trendRevision,extrasRevision,extrasPending;
+    private final Map<String,String> extrasFailures=new LinkedHashMap<>();
+    private LinearLayout extrasPanel;
+    private TextView contextPreview;
+    private String envCatalogError="";
     private boolean loading,busy,envLoaded,usageLoaded;
     private LinearLayout root,body,footer;
     private ScrollView contentScroll;
@@ -54,7 +58,7 @@ public final class SettingsActivity extends AppCompatActivity {
     }
     @Override protected void onSaveInstanceState(Bundle out){super.onSaveInstanceState(out);out.putInt("page",page);out.putInt("section",section);JSONObject draft=new JSONObject();edits.forEach((k,v)->Json.put(draft,k,v));out.putString("runtimeEdits",draft.toString());out.putString("start",start.toString());out.putString("end",end.toString());}
     @Override protected void onResume(){super.onResume();if(api!=null&&!current())finish();}
-    @Override protected void onDestroy(){revision++;trendRevision++;io.shutdown();super.onDestroy();}
+    @Override protected void onDestroy(){revision++;trendRevision++;extrasRevision++;io.shutdownNow();super.onDestroy();}
     @Override public void onBackPressed(){if(busy){toast("正在保存，请稍候");return;}if(!edits.isEmpty())confirm("放弃未保存的修改？","运行配置的修改尚未保存。",this::finish);else super.onBackPressed();}
     private boolean current(){return !isFinishing()&&!isDestroyed()&&chat.loggedIn&&scope==chat.scope()&&api.base.equals(chat.base)&&api.token.equals(chat.token)&&api.agent.equals(chat.agent);}
     private String t(String path){Object value=RuntimeConfig.get(strings,path);return value instanceof String?(String)value:path;}
@@ -72,24 +76,32 @@ public final class SettingsActivity extends AppCompatActivity {
     private void load(){
         loading=true;error="";render();
         if(page==0){request(()->object("/workspace/running-config"),r->{config=(JSONObject)r;loadExtras();});}
-        else if(page==1){request(()->Json.obj("envs",array("/envs"),"catalog",array("/envs/catalog")),r->{JSONObject o=(JSONObject)r;envs=o.optJSONArray("envs");catalog=o.optJSONArray("catalog");envLoaded=true;});}
+        else if(page==1){request(()->{JSONArray variables=array("/envs");try{return Json.obj("envs",variables,"catalog",array("/envs/catalog"),"warning","");}catch(IOException e){if(e instanceof ApiClient.ApiException a&&a.status==401)throw e;return Json.obj("envs",variables,"catalog",new JSONArray(),"warning",e instanceof ApiClient.ApiException a&&(a.status==404||a.status==405)?"当前服务器未提供分类目录，仅显示已配置的变量。":"分类目录读取失败，已配置的变量仍可使用。可刷新重试。");}},r->{JSONObject o=(JSONObject)r;envs=o.optJSONArray("envs");catalog=o.optJSONArray("catalog");envCatalogError=o.optString("warning");envLoaded=true;});}
         else {loadUsage();}
     }
     private void loadExtras(){
-        // Optional capabilities have independent errors; an older server must not block retry/approval settings.
-        io.execute(()->{
-            Map<String,Object> values=new HashMap<>();List<String> unavailable=new ArrayList<>();
-            String[][] paths={{"language","/workspace/language"},{"timezone","/config/user-timezone"},{"memory","/agents/memory/backends"},{"projects","/workspace/project-directory/dirs"},{"coding","/coding-mode"},{"model","/models/active?scope=effective&agent_id="+ApiClient.enc(api.agent)}};
-            for(String[] p:paths)try{values.put(p[0],get(p[1]));}catch(Exception e){if(e instanceof ApiClient.ApiException a&&a.status==401){runOnUiThread(()->{if(current())failure(e);});return;}unavailable.add(p[0]);}
-            runOnUiThread(()->{if(!current())return;
-                language=Json.object(values.get("language")).optString("language","");timezone=Json.object(values.get("timezone")).optString("timezone","");memory=Json.array(values.get("memory"));projects=Json.object(values.get("projects"));
-                JSONObject mode=Json.object(values.get("coding"));coding=mode.has("enabled")?mode.optBoolean("enabled"):null;
-                contextLimit=Json.object(values.get("model")).optLong("effective_max_input_length",0);
-                extrasError=unavailable.isEmpty()?"":"部分附加配置读取失败或服务器版本不支持："+String.join("、",unavailable);
-                if(page==0&&!busy&&!loading&&!(getCurrentFocus() instanceof EditText))render();
+        int id=++extrasRevision;extrasPending=6;extrasFailures.clear();extrasError="";updateExtrasPanel();
+        String[][] paths={{"language","/workspace/language","智能体语言"},{"timezone","/config/user-timezone","用户时区"},{"memory","/agents/memory/backends","记忆后端"},{"projects","/workspace/project-directory/dirs","默认工作区"},{"coding","/coding-mode","代码增强"},{"model","/models/active?scope=effective&agent_id="+ApiClient.enc(api.agent),"模型上下文"}};
+        for(String[] path:paths)io.execute(()->{
+            Object result=null;Exception problem=null;
+            try{result=get(path[1]);if(path[0].equals("memory")?!(result instanceof JSONArray):!(result instanceof JSONObject))throw new IOException("响应格式不正确");}catch(Exception e){problem=e;}
+            Object value=result;Exception error=problem;
+            runOnUiThread(()->{if(!current()||id!=extrasRevision)return;extrasPending=Math.max(0,extrasPending-1);
+                if(error instanceof ApiClient.ApiException e&&e.status==401){failure(error);return;}
+                if(error!=null){String reason=error instanceof ApiClient.ApiException e&&(e.status==404||e.status==405)?"当前服务器未提供":"读取失败，可重试";extrasFailures.put(path[2],reason);}
+                else switch(path[0]){case "language"->language=Json.str(Json.object(value),"language");case "timezone"->timezone=Json.str(Json.object(value),"timezone");case "memory"->memory=Json.array(value);case "projects"->projects=Json.object(value);case "coding"->{JSONObject mode=Json.object(value);coding=mode.has("enabled")?mode.optBoolean("enabled"):null;}case "model"->contextLimit=Json.object(value).optLong("effective_max_input_length",0);}
+                extrasError=extrasFailures.entrySet().stream().map(e->e.getKey()+"："+e.getValue()).collect(java.util.stream.Collectors.joining("\n"));updateExtrasPanel();if(path[0].equals("memory")&&error==null)updateMemoryChoices();if(path[0].equals("model")&&contextPreview!=null&&page==0&&section==2)updateThreshold(contextPreview);
             });
         });
     }
+    private void updateExtrasPanel(){if(extrasPanel!=null&&page==0&&section==0&&extrasPanel.getParent()!=null&&!busy){extrasPanel.removeAllViews();populateExtras(extrasPanel);}}
+    private void updateMemoryChoices(){
+        if(body==null||page!=0||section!=0||busy)return;RuntimeConfig.Field field=RuntimeConfig.FIELDS.get(3);View view=body.findViewWithTag(field.path());if(!(view instanceof RadioGroup group))return;
+        String selected=String.valueOf(value(field.path()));group.removeAllViews();boolean found=false;
+        for(int i=0;i<memory.length();i++){JSONObject option=memory.optJSONObject(i);if(option==null)continue;String key=Json.str(option,"id");boolean available=option.optBoolean("available",true);RadioButton button=new RadioButton(this);button.setText(Json.str(option,"label",key)+(available?"":"（不可用）"));button.setTextColor(Ui.INK);button.setMinHeight(ui.dp(48));button.setEnabled(available);button.setId(View.generateViewId());group.addView(button);button.setChecked(key.equals(selected));if(key.equals(selected))found=true;button.setOnClickListener(v->change(field.path(),key));}
+        if(!found){RadioButton current=new RadioButton(this);current.setText(selected+"（当前后端）");current.setEnabled(false);current.setChecked(true);group.addView(current);}
+    }
+    private String extrasState(String value){return !value.isEmpty()?value:extrasPending>0?"正在读取…":"未提供或读取失败";}
     private void render(){
         if(!current())return;
         int scrollY=contentScroll!=null&&renderedPage==page&&renderedSection==section?contentScroll.getScrollY():0;
@@ -121,7 +133,7 @@ public final class SettingsActivity extends AppCompatActivity {
         if(section==2){
             fields(box,8,10);String strategy=String.valueOf(RuntimeConfig.get(config,RuntimeConfig.LIGHT+"strategy"));note(box,"上下文策略："+(strategy.equals("native")?"Native":"Scroll"),false);
             LinearLayout compact=collapse(box,ac("contextCompactCollapseLabel"));fields(compact,10,13);
-            TextView preview=ui.text("",13,Ui.GREEN);compact.addView(preview);updateThreshold(preview);
+            TextView preview=ui.text("",13,Ui.GREEN);contextPreview=preview;compact.addView(preview);updateThreshold(preview);
             // Keep the live threshold preview synchronized without rebuilding focused input fields.
             for(int i=0;i<compact.getChildCount();i++)if(compact.getChildAt(i) instanceof EditText e)watch(e,s->updateThreshold(preview));
             if(!strategy.equals("native")){fields(compact,13,14);TextView hint=ui.text("",12,Ui.DANGER);compact.addView(hint);Runnable update=()->{double days=RuntimeConfig.number(config,RuntimeConfig.LIGHT+"scroll_config.history_retention_days",30);try{days=Double.parseDouble(edits.getOrDefault(RuntimeConfig.LIGHT+"scroll_config.history_retention_days",String.valueOf(days)));}catch(Exception ignored){}hint.setText(days==0?ac("historyRetentionDaysForeverWarning"):days>30?ac("historyRetentionDaysLargeWarning"):"");};update.run();for(int i=0;i<compact.getChildCount();i++)if(compact.getChildAt(i) instanceof EditText e)watch(e,s->update.run());}
@@ -161,11 +173,13 @@ public final class SettingsActivity extends AppCompatActivity {
         if(edits.isEmpty()){toast("没有需要保存的修改");return;}Map<String,String> pending=new LinkedHashMap<>(edits);busy=true;render();
         request(()->{JSONObject latest=object("/workspace/running-config");return api.saveRunningConfig(RuntimeConfig.merge(latest,pending));},r->{config=(JSONObject)r;edits.clear();chat.refreshCatalog();toast(ac("saveSuccess"));});
     }
-    private void reactExtras(LinearLayout box){
+    private void reactExtras(LinearLayout box){extrasPanel=ui.column();box.addView(extrasPanel);populateExtras(extrasPanel);}
+    private void populateExtras(LinearLayout box){
+        if(extrasPending>0)note(box,"正在读取附加配置（剩余 "+extrasPending+" 项）…",false);
         if(!extrasError.isEmpty()){note(box,extrasError,true);box.addView(ui.button("重试附加配置",null,false,v->loadExtras()));}
-        box.addView(ui.button(ac("language")+" · "+(language.isEmpty()?"加载中 / 不可用":language),null,false,v->{if(language.isEmpty())return;String[] labels={"中文","English","Bahasa Indonesia","Русский"},keys={"zh","en","id","ru"};new MaterialAlertDialogBuilder(this).setTitle(ac("language")).setItems(labels,(d,i)->{if(!keys[i].equals(language))confirm(ac("languageConfirmTitle"),ac("languageConfirmContent"),()->immediate("PUT","/workspace/language",Json.obj("language",keys[i]),r->{language=r.optString("language",keys[i]);toast(ac("languageSaveSuccess"));}));}).show();}));
-        box.addView(ui.button(ac("timezone")+" · "+(timezone.isEmpty()?"加载中 / 不可用":timezone),null,false,v->{if(!timezone.isEmpty())timezonePicker();}));
-        LinearLayout project=card(box,ac("projectDirectoryTitle"));JSONArray dirs=Json.array(projects.opt("project_dirs"));StringBuilder paths=new StringBuilder();for(int i=0;i<dirs.length();i++)paths.append(i==0?"主要 · ":"附加 · ").append(Json.object(dirs.opt(i)).optString("path")).append('\n');if(paths.length()==0)paths.append(projects.optString("workspace_dir","加载中 / 不可用"));note(project,paths.toString().trim(),false);var manage=ui.button("管理默认工作区",null,false,v->manageProjects());manage.setEnabled(projects.has("project_dirs"));project.addView(manage);
+        box.addView(ui.button(ac("language")+" · "+extrasState(language),null,false,v->{if(language.isEmpty())return;String[] labels={"中文","English","Bahasa Indonesia","Русский"},keys={"zh","en","id","ru"};new MaterialAlertDialogBuilder(this).setTitle(ac("language")).setItems(labels,(d,i)->{if(!keys[i].equals(language))confirm(ac("languageConfirmTitle"),ac("languageConfirmContent"),()->immediate("PUT","/workspace/language",Json.obj("language",keys[i]),r->{language=r.optString("language",keys[i]);toast(ac("languageSaveSuccess"));}));}).show();}));
+        box.addView(ui.button(ac("timezone")+" · "+extrasState(timezone),null,false,v->{if(!timezone.isEmpty())timezonePicker();}));
+        LinearLayout project=card(box,ac("projectDirectoryTitle"));JSONArray dirs=Json.array(projects.opt("project_dirs"));StringBuilder paths=new StringBuilder();for(int i=0;i<dirs.length();i++)paths.append(i==0?"主要 · ":"附加 · ").append(Json.object(dirs.opt(i)).optString("path")).append('\n');if(paths.length()==0)paths.append(projects.optString("workspace_dir",extrasState("")));note(project,paths.toString().trim(),false);var manage=ui.button("管理默认工作区",null,false,v->manageProjects());manage.setEnabled(projects.has("project_dirs"));project.addView(manage);
         if(coding!=null){SwitchMaterial toggle=new SwitchMaterial(this);toggle.setText(ac("enhancedCodeCapability"));toggle.setChecked(coding);box.addView(toggle);note(box,ac("enhancedCodeCapabilityDescription"),false);toggle.setOnCheckedChangeListener((v,on)->immediate("POST","/coding-mode",Json.obj("enabled",on),r->coding=r.optBoolean("enabled")));}
     }
     private void immediate(String method,String path,Object payload,Consumer<JSONObject> done){if(busy)return;busy=true;render();request(()->Json.object(api.call(method,path,payload)),r->{done.accept((JSONObject)r);});}
@@ -186,6 +200,7 @@ public final class SettingsActivity extends AppCompatActivity {
     }
 
     private void environments(){
+        if(!envCatalogError.isEmpty())note(body,envCatalogError,true);
         body.addView(ui.button(t("environments.addVariable"),"plus",true,v->envEditor(null,null)));
         EditText search=edit(body,t("environments.searchPlaceholder"),envQuery,false);LinearLayout results=ui.column();body.addView(results);Runnable populate=()->envRows(results);watch(search,s->{envQuery=s;populate.run();});populate.run();footer.addView(ui.button("刷新环境变量",null,false,v->load()));if(busy)setEnabled(body,false);
     }

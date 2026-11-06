@@ -16,14 +16,11 @@ import java.util.concurrent.*;
 import okhttp3.Call;
 
 /** Entire UI is native Android. No WebView, remote frontend, or JavaScript injection. */
-public class MainActivity extends androidx.appcompat.app.AppCompatActivity {
+public class MainActivity extends Activity {
     private int INK,MUTED,ACCENT,BG;
     private Ui ui;
     private ScrollView scroll;
     private LinearLayout bottomNavigation;
-    private LinearLayout platformBar;
-    private View platformDivider;
-    private FrameLayout consoleContainer;
     private View backControl;
     private final Ui.Icon[] tabIcons=new Ui.Icon[5];
     private final TextView[] tabLabels=new TextView[5];
@@ -67,7 +64,6 @@ public class MainActivity extends androidx.appcompat.app.AppCompatActivity {
     @Override public void onCreate(Bundle saved) {
         ui=new Ui(this);setTheme(ui.dark?R.style.AppThemeDark:R.style.AppTheme);
         super.onCreate(saved);
-        getOnBackPressedDispatcher().addCallback(this,new androidx.activity.OnBackPressedCallback(true){@Override public void handleOnBackPressed(){back();}});
         androidx.core.view.WindowCompat.setDecorFitsSystemWindows(getWindow(),false);
         INK=ui.ink;MUTED=ui.muted;ACCENT=ui.blue;BG=ui.bg;
         if(Build.VERSION.SDK_INT>=29)getWindow().getDecorView().setForceDarkAllowed(false);
@@ -86,44 +82,26 @@ public class MainActivity extends androidx.appcompat.app.AppCompatActivity {
             if(bottomNavigation!=null)bottomNavigation.setVisibility(keyboard?View.GONE:View.VISIBLE);
             return insets;
         });
-        LinearLayout bar=row();platformBar=bar;bar.setPadding(dp(12),dp(4),dp(12),dp(4));
+        LinearLayout bar=row();bar.setPadding(dp(12),dp(4),dp(12),dp(4));
         FrameLayout back=new FrameLayout(this);Ui.Icon backIcon=new Ui.Icon(this,"back",ACCENT);FrameLayout.LayoutParams bp=new FrameLayout.LayoutParams(dp(24),dp(24),Gravity.CENTER);back.addView(backIcon,bp);back.setContentDescription("返回上一页");back.setOnClickListener(v->back());backControl=back;bar.addView(back,new LinearLayout.LayoutParams(dp(44),dp(44)));
         heading=text("AgentScope",17,INK);heading.setGravity(Gravity.CENTER);heading.setTypeface(null,Typeface.BOLD);bar.addView(heading,new LinearLayout.LayoutParams(0,-2,1));
         FrameLayout refresh=new FrameLayout(this);refresh.addView(new Ui.Icon(this,"refresh",ACCENT),new FrameLayout.LayoutParams(dp(22),dp(22),Gravity.CENTER));refresh.setContentDescription("刷新当前页面");refresh.setBackground(Ui.ripple(this,BG,22,ACCENT));refresh.setOnClickListener(v->guard(()->{if(screen!=null)screen.run();}));bar.addView(refresh,new LinearLayout.LayoutParams(dp(44),dp(44)));root.addView(bar);
         loading=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);loading.setProgressTintList(android.content.res.ColorStateList.valueOf(ACCENT));loading.setIndeterminateTintList(android.content.res.ColorStateList.valueOf(ACCENT));loading.setIndeterminate(true);loading.setVisibility(View.GONE);root.addView(loading,new LinearLayout.LayoutParams(-1,dp(2)));
         status=text("",14,ui.red);status.setPadding(dp(16),dp(12),dp(16),dp(12));status.setBackground(Ui.shape(this,ui.surface,12));status.setVisibility(View.GONE);status.setOnClickListener(v->status.setVisibility(View.GONE));status.setContentDescription("操作提示，点击关闭");LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(-1,-2);sp.setMargins(dp(20),dp(8),dp(20),0);root.addView(status,sp);
         scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setClipToPadding(false);body=column();body.setPadding(dp(20),dp(4),dp(20),dp(28));scroll.addView(body);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
-        consoleContainer=new FrameLayout(this);consoleContainer.setId(R.id.console_container);consoleContainer.setVisibility(View.GONE);root.addView(consoleContainer,new LinearLayout.LayoutParams(-1,0,1));
-        View divider=new View(this);platformDivider=divider;divider.setBackgroundColor(ui.line);root.addView(divider,new LinearLayout.LayoutParams(-1,dp(1)));
+        View divider=new View(this);divider.setBackgroundColor(ui.line);root.addView(divider,new LinearLayout.LayoutParams(-1,dp(1)));
         LinearLayout nav=row();bottomNavigation=nav;nav.setBackgroundColor(ui.surface);nav.setPadding(dp(6),dp(5),dp(6),dp(5));String[] names={"总览","对话","管理","社区","我的"},icons={"grid","chat","settings","community","person"};
         for(int i=0;i<names.length;i++){final int index=i;LinearLayout tab=column();tab.setGravity(Gravity.CENTER);tab.setContentDescription(names[i]);tab.setBackground(Ui.ripple(this,ui.surface,14,ACCENT));tab.setClickable(true);tab.setFocusable(true);tab.setOnClickListener(v->guard(()->switchTab(index)));
             tabIcons[i]=new Ui.Icon(this,icons[i],MUTED);tab.addView(tabIcons[i],new LinearLayout.LayoutParams(dp(24),dp(24)));tabLabels[i]=text(names[i],11,MUTED);tabLabels[i].setPadding(0,dp(3),0,0);tabLabels[i].setGravity(Gravity.CENTER);tab.addView(tabLabels[i]);nav.addView(tab,new LinearLayout.LayoutParams(0,dp(54),1));}
-        root.addView(nav);setContentView(root);androidx.core.view.ViewCompat.requestApplyInsets(root);switchTab(saved==null?0:saved.getInt("selectedTab",0));
+        root.addView(nav);setContentView(root);androidx.core.view.ViewCompat.requestApplyInsets(root);switchTab(0);
     }
     private Runnable tabRoot(int index){switch(index){case 1:return this::chats;case 2:return this::settings;case 3:return this::community;case 4:return this::account;default:return this::dashboard;}}
     private void switchTab(int index){
-        if(screen!=null&&consoleContainer.getVisibility()!=View.VISIBLE){savedScreens[selectedTab]=screen;tabScroll[selectedTab]=scroll.getScrollY();}
-        syncConsoleAgent();
-        boolean embedded=index==1&&api.connected();
-        cn.qwenpaw.android.ConsoleFragment console=(cn.qwenpaw.android.ConsoleFragment)getSupportFragmentManager().findFragmentByTag("embedded-console");
-        try{
-            if(embedded)ConsoleBridge.prepare(this,api);
-            if(embedded&&(console==null||!console.sessionActive())){
-                androidx.fragment.app.FragmentTransaction tx=getSupportFragmentManager().beginTransaction();if(console!=null)tx.remove(console);
-                console=new cn.qwenpaw.android.ConsoleFragment();Bundle args=new Bundle();args.putBoolean("embedded",true);console.setArguments(args);tx.add(R.id.console_container,console,"embedded-console").commitNow();
-            }
-            if(console!=null){androidx.fragment.app.FragmentTransaction tx=getSupportFragmentManager().beginTransaction();if(embedded)tx.show(console);else tx.hide(console);tx.commitNow();}
-        }catch(Exception error){failure(error);return;}
-        consoleContainer.setVisibility(embedded?View.VISIBLE:View.GONE);platformBar.setVisibility(embedded?View.GONE:View.VISIBLE);scroll.setVisibility(embedded?View.GONE:View.VISIBLE);
-        if(embedded){epoch++;pendingTasks=0;loading.setVisibility(View.GONE);status.setVisibility(View.GONE);}
+        if(index==1&&api.connected()){ConsoleBridge.open(this);return;}
+        if(screen!=null){savedScreens[selectedTab]=screen;tabScroll[selectedTab]=scroll.getScrollY();}
         selectedTab=index;history=savedHistories.get(index);screen=savedScreens[index]==null?tabRoot(index):savedScreens[index];
         for(int i=0;i<5;i++){tabIcons[i].tint(i==index?ACCENT:MUTED);tabLabels[i].setTextColor(i==index?ACCENT:MUTED);tabLabels[i].setTypeface(null,i==index?Typeface.BOLD:Typeface.NORMAL);}
-        if(!embedded){screen.run();int y=tabScroll[index];scroll.post(()->scroll.scrollTo(0,y));}
-    }
-    public void showPlatformTab(int index){guard(()->switchTab(index));}
-    private void syncConsoleAgent(){
-        if(api==null||!(getApplication() instanceof cn.qwenpaw.android.PawApplication app)||app.chat==null||!app.chat.loggedIn||!app.chat.base.equals(api.base())||api.agent.equals(app.chat.agent))return;
-        api.agent=app.chat.agent;getPreferences(0).edit().putString("agent",api.agent).apply();for(int i=0;i<3;i++){savedHistories.get(i).clear();savedScreens[i]=null;}
+        screen.run();int y=tabScroll[index];scroll.post(()->scroll.scrollTo(0,y));
     }
     private void guard(Runnable next){if(dirty.getAsBoolean())confirm("放弃尚未保存的更改？",next);else next.run();}
     private int dp(int n){return Math.round(n*getResources().getDisplayMetrics().density);}
@@ -149,7 +127,8 @@ public class MainActivity extends androidx.appcompat.app.AppCompatActivity {
     }
     private void start(String title){if(chatComposer!=null){root.removeView(chatComposer);chatComposer=null;}attachmentList=null;visibleChat="";liveResponse=null;activeCompose=null;activeSend=null;epoch++;pendingTasks=0;dirty=()->false;heading.setText(history.isEmpty()?"AgentScope":title);backControl.setVisibility(history.isEmpty()?View.INVISIBLE:View.VISIBLE);body.removeAllViews();status.setVisibility(View.GONE);loading.setVisibility(View.GONE);TextView large=text(title,32,INK);large.setTypeface(null,Typeface.BOLD);large.setLetterSpacing(-0.025f);large.setPadding(0,dp(8),0,dp(18));body.addView(large);scroll.scrollTo(0,0);}
     private void navigate(Runnable next,boolean remember){if(remember&&screen!=null)history.push(screen);screen=next;savedScreens[selectedTab]=next;next.run();}
-    private void back(){guard(()->{if(selectedTab==1&&consoleContainer.getVisibility()==View.VISIBLE){switchTab(0);return;}if(!history.isEmpty())navigate(history.pop(),false);else if(selectedTab!=0)switchTab(0);else confirm(streaming!=null?"退出应用？Agent 任务仍在服务端运行。":"退出 AgentScope 随行？",this::finish);});}
+    private void back(){guard(()->{if(!history.isEmpty())navigate(history.pop(),false);else if(selectedTab!=0)switchTab(0);else confirm(streaming!=null?"退出应用？Agent 任务仍在服务端运行。":"退出 AgentScope 随行？",this::finish);});}
+    @Override public void onBackPressed(){back();}
     private void info(String message){status.setText(message);status.setTextColor(INK);status.setVisibility(View.VISIBLE);}
     private void failure(Exception e){status.setText(e.getMessage()==null?"操作失败，请重试":e.getMessage());status.setTextColor(ui.red);status.setVisibility(View.VISIBLE);}
     private void task(Job job,Result result){
@@ -253,6 +232,7 @@ public class MainActivity extends androidx.appcompat.app.AppCompatActivity {
         String[][] modules={{"运行配置","/workspace/running-config","config"},{"定时任务","/cron/jobs","cron"},{"频道","/config/channels","config"},{"心跳","/config/heartbeat","config"},{"技能","/skills","skills"},{"工具","/tools","tools"},{"MCP 服务","/mcp","mcp"},{"ACP","/config/acp","config"},{"模型供应商","/models","models"},{"扩展插件","/plugins","plugins"},{"技能池","/skills/pool","pool"},{"环境变量","/envs","env"},{"工具安全","/config/security/tool-guard","config"},{"沙箱安全","/config/security/sandbox","config"},{"文件保护","/config/security/file-guard","config"},{"备份","/backups","backups"}};
         java.util.List<String> groupOrder=Arrays.asList("工作空间设置","模型服务","能力与扩展","自动化","安全策略","数据与环境");Arrays.sort(modules,Comparator.comparingInt(module->groupOrder.indexOf(moduleGroup(module))));String group="";for(String[] m:modules){String nextGroup=moduleGroup(m);if(!nextGroup.equals(group)){section(nextGroup);group=nextGroup;}card(m[0],"查看与管理",()->{
             if(m[2].equals("skills")||m[2].equals("pool")){ConsoleBridge.open(this,cn.qwenpaw.android.SkillsActivity.class,m[2].equals("pool")?1:-1);return;}
+            if(m[2].equals("models")){ConsoleBridge.open(this,cn.qwenpaw.android.ModelsActivity.class,-1);return;}
             if(m[2].equals("tools")){ConsoleBridge.open(this,cn.qwenpaw.android.ToolsActivity.class,-1);return;}
             if(m[0].equals("运行配置")||m[2].equals("env")){ConsoleBridge.open(this,cn.qwenpaw.android.SettingsActivity.class,m[2].equals("env")?1:0);return;}
             navigate(()->resources(m[0],m[1],m[2]),true);
@@ -338,11 +318,11 @@ public class MainActivity extends androidx.appcompat.app.AppCompatActivity {
     }
     private String modelLabel(Object data){JSONObject slot=Api.object(data).optJSONObject("active_llm");return slot==null?"尚未配置":slot.optString("model","尚未配置")+" · "+slot.optString("provider_id","");}
     private void switchModel(String provider,String model,Runnable done){
-        if(streaming!=null){info("请等待当前回复完成或先停止任务，再切换模型");return;}
+        if(streaming!=null||ConsoleBridge.busy(this)){info("请等待当前回复或附件上传完成，再切换模型");return;}
         String agent=api.agent;task(()->api.instance("PUT","/models/active",ChatContent.selection(provider,model,agent)),result->{activeModels.put(agent,modelLabel(result));Toast.makeText(this,"当前智能体已切换模型",Toast.LENGTH_SHORT).show();done.run();});
     }
     private void chooseModel(Runnable done){
-        if(streaming!=null){info("请等待当前回复完成或先停止任务，再切换模型");return;}
+        if(streaming!=null||ConsoleBridge.busy(this)){info("请等待当前回复或附件上传完成，再切换模型");return;}
         task(()->Api.obj("providers",api.instance("GET","/models",null),"active",api.instance("GET",modelPath(),null)),result->showModelPicker(Api.array(Api.object(result).opt("providers")),Api.object(result).opt("active"),done));
     }
     private AlertDialog showModelPicker(JSONArray providers,Object active,Runnable done) throws JSONException {
@@ -432,7 +412,7 @@ public class MainActivity extends androidx.appcompat.app.AppCompatActivity {
     }
     private String downloadSafeName(String path){return path.substring(path.lastIndexOf('/')+1);}
     @Override protected void onActivityResult(int request,int result,Intent data){
-        super.onActivityResult(request,result,data);if(request!=201&&request!=202&&request!=203)return;if(result!=RESULT_OK||data==null||data.getData()==null)return;Uri uri=data.getData();if(pickerEpoch!=epoch){info("页面已变化，请重新选择文件");return;}
+        super.onActivityResult(request,result,data);if(result!=RESULT_OK||data==null||data.getData()==null)return;Uri uri=data.getData();if(pickerEpoch!=epoch){info("页面已变化，请重新选择文件");return;}
         if(request==203){String cid=attachmentChat;int uploadVisit=epoch;attachmentUploading=true;renderAttachments(cid);task(()->{try{
             String filename="attachment";try(android.database.Cursor cursor=getContentResolver().query(uri,null,null,null,null)){if(cursor!=null&&cursor.moveToFirst()){int index=cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME);if(index>=0)filename=cursor.getString(index);}}
             String mime=getContentResolver().getType(uri);if(mime==null)mime="application/octet-stream";
@@ -512,10 +492,7 @@ public class MainActivity extends androidx.appcompat.app.AppCompatActivity {
     private void market(boolean plugin){
         start(plugin?"插件市场":"技能市场");String path="/api/v1/"+(plugin?"plugins":"skills");task(()->Api.unwrap(api.platform("GET",path+"?page=1&pageSize=30",null)),v->{JSONArray a=Api.array(v);for(int i=0;i<a.length();i++){JSONObject item=a.optJSONObject(i);if(item==null)continue;String identifier=id(item);card(item.optString("name",item.optString("skill_code",identifier)),item.optString("description",""),()->task(()->Api.unwrap(api.platform("GET",path+"/"+Uri.encode(identifier),null)),detail->{detail(plugin?"插件详情":"技能详情",detail);}));}note("市场安装及分页仍待适配。");});
     }
-    @Override protected void onResume(){
-        super.onResume();if(api==null)return;String previous=api.agent;syncConsoleAgent();
-        if(!previous.equals(api.agent)&&root!=null&&selectedTab<3&&selectedTab!=1){screen=null;switchTab(selectedTab);}
-    }
-    @Override protected void onSaveInstanceState(Bundle state){super.onSaveInstanceState(state);state.putInt("selectedTab",selectedTab);state.putString("drafts",new JSONObject(drafts).toString());state.putString("attachments",new JSONObject(attachments).toString());}
+    @Override protected void onResume(){super.onResume();if(api!=null&&getApplication() instanceof cn.qwenpaw.android.PawApplication app&&app.chat!=null&&app.chat.loggedIn&&app.chat.base.equals(api.base())){boolean changed=!api.agent.equals(app.chat.agent);api.agent=app.chat.agent;getPreferences(0).edit().putString("agent",api.agent).apply();if(changed&&root!=null){for(int i=0;i<3;i++){savedHistories.get(i).clear();savedScreens[i]=null;}screen=null;switchTab(2);Toast.makeText(this,"智能体已切换，管理页面已重新加载",Toast.LENGTH_SHORT).show();}}}
+    @Override protected void onSaveInstanceState(Bundle state){super.onSaveInstanceState(state);state.putString("drafts",new JSONObject(drafts).toString());state.putString("attachments",new JSONObject(attachments).toString());}
     @Override protected void onDestroy(){epoch++;handler.removeCallbacksAndMessages(null);if(streaming!=null)streaming.cancel();work.shutdownNow();super.onDestroy();}
 }
