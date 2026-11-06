@@ -31,9 +31,9 @@ public final class ConsoleBridge {
     public static void open(Activity activity,Class<?> page,int section){
         Api api=new Api(new SecretStore(activity));if(!api.connected()){Toast.makeText(activity,"请先连接工作空间",Toast.LENGTH_SHORT).show();return;}
         try{
-            OkHttpClient transport=transport(api);synchronized(ConsoleBridge.class){sessions.removeIf(ref->ref.get()==null);clients.removeIf(ref->ref.get()==null);sessions.add(new java.lang.ref.WeakReference<>(api));clients.add(new java.lang.ref.WeakReference<>(transport));}ApiClient.useTransport(transport);PawApplication app=(PawApplication)activity.getApplication();
+            OkHttpClient transport=transport(api);synchronized(ConsoleBridge.class){sessions.removeIf(ref->ref.get()==null);clients.removeIf(ref->ref.get()==null);sessions.add(new java.lang.ref.WeakReference<>(api));clients.add(new java.lang.ref.WeakReference<>(transport));}PawApplication app=(PawApplication)activity.getApplication();
             app.ensureChat().bindManaged(api.base(),api.secrets.get("instanceToken"),activity.getSharedPreferences("MainActivity",0).getString("agent","default"));
-            Intent intent=new Intent(activity,page);if(section>=0)intent.putExtra("page",section);if(page==cn.qwenpaw.android.SkillsActivity.class&&section==1)intent.putExtra("pool",true);activity.startActivity(intent);
+            ApiClient.useTransport(transport);Intent intent=new Intent(activity,page);if(section>=0)intent.putExtra("page",section);if(page==cn.qwenpaw.android.SkillsActivity.class&&section==1)intent.putExtra("pool",true);activity.startActivity(intent);
         }catch(Exception error){Toast.makeText(activity,"控制台暂时无法打开："+error.getMessage(),Toast.LENGTH_LONG).show();}
     }
     public static void disconnect(Context context){

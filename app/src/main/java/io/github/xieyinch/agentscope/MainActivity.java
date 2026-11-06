@@ -220,7 +220,7 @@ public class MainActivity extends Activity {
         body.addView(button("连接实例",()->navigate(this::connection,true)));
         body.addView(button("我的帖子",()->navigate(()->articleList("我的帖子","/api/v1/community/me/articles?page=1&page_size=30"),true)));
         body.addView(button("我的收藏",()->navigate(()->articleList("我的收藏","/api/v1/community/me/favorites?page=1&page_size=30"),true)));
-        body.addView(button("退出登录",()->change("退出并移除此应用中保存的全部登录状态？",()->{try{api.platform("POST","/api/v1/auth/logout",null);}finally{ConsoleBridge.disconnect(this);api.clearLocalSession();drafts.clear();attachments.clear();activeModels.clear();}return null;},this::account)));
+        body.addView(button("退出登录",()->change("退出平台并清除此平台工作空间的本地会话？",()->{try{api.platform("POST","/api/v1/auth/logout",null);}finally{ConsoleBridge.disconnect(this);api.clearLocalSession();drafts.clear();attachments.clear();activeModels.clear();}return null;},this::account)));
         section("AgentScope 随行 · "+BuildConfig.VERSION_NAME);note("为 AgentScope 打造的独立安卓客户端。部分高级能力仍在完善中。");
     }
 
@@ -250,7 +250,7 @@ public class MainActivity extends Activity {
             if(kind.equals("agents"))body.addView(button("创建智能体",()->newForm("创建智能体",path,Api.obj("id","","name","","description",""))));
             if(kind.equals("mcp"))body.addView(button("添加 MCP 服务",()->newForm("添加 MCP",path,Api.obj("client_key","","client",ControlSchemas.mcp(new JSONObject())))));
             if(kind.equals("cron"))body.addView(button("创建定时任务",this::createCron));
-            if(kind.equals("backups"))body.addView(primary("创建备份",()->navigate(this::createBackup,true)));
+            if(kind.equals("backups")){body.addView(primary("创建备份",()->navigate(this::createBackup,true)));body.addView(button("查看进行中的备份",()->task(()->api.instance("GET","/backups/jobs/active",null),value->{String job=Api.object(value).optString("job_id");if(job.isEmpty())info("当前没有进行中的备份");else navigate(()->backupProgress(job),true);})));}
             if(kind.equals("env"))body.addView(button("添加环境变量",this::addEnvironment));
             if(kind.equals("models")){body.addView(primary("切换当前对话模型",()->chooseModel(()->resources(title,path,kind))));note("当前智能体："+api.agent+"。进入供应商可查看和选择全部已添加的对话模型。");}
             if(kind.equals("models"))body.addView(button("添加供应商",()->newForm("添加供应商","/models/custom-providers",Api.obj("id","","name","","default_base_url","","api_key",""))));

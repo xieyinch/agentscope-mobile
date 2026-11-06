@@ -105,6 +105,9 @@ public class NativeUiTest {
             screenshot("13-resources-sample");
         }
     }
+    @Test public void removingConfigurationFieldPreservesOtherValues() throws Exception {
+        try(ActivityScenario<MainActivity> scene=ActivityScenario.launch(MainActivity.class)){scene.onActivity(a->{try{NativeForm form=new NativeForm(a,Api.obj("Authorization","fixture-secret","X-Mode","custom","max_tokens",128),true);form.removeField("Authorization");org.json.JSONObject result=form.read();assertFalse(result.has("Authorization"));assertEquals("custom",result.getString("X-Mode"));assertEquals(128,result.getInt("max_tokens"));}catch(Exception error){throw new AssertionError(error);}});}
+    }
     @Test public void preservesPerTabNavigationAndCapturesNativeScreens() throws Exception {
         try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)){
             scenario.onActivity(a->{screenshotRoot=a.getWindow().getDecorView();new SecretStore(a).clear();});

@@ -14,7 +14,7 @@ final class NativeForm {
     interface Read {Object get() throws Exception;}
     final Context context;
     final LinearLayout layout;
-    private final JSONObject original;
+    private JSONObject original;
     private final Map<String,Read> fields=new LinkedHashMap<>();
     private final boolean editable;
     private final Ui ui;
@@ -27,9 +27,10 @@ final class NativeForm {
     static String label(String key){return LABELS.getOrDefault(key,key.replace('_',' '));}
     NativeForm(Context c,JSONObject object,boolean edit) {
         context=c;ui=new Ui(c);original=object;editable=edit;layout=column(c);layout.setPadding(Ui.dp(c,16),Ui.dp(c,4),Ui.dp(c,16),Ui.dp(c,16));layout.setBackground(Ui.shape(c,ui.surface,16));
-        Iterator<String> keys=object.keys();
-        while(keys.hasNext()){String key=keys.next();fields.put(key,field(layout,key,object.opt(key),0));}
+        rebuild(object);
     }
+    void rebuild(JSONObject object){original=object;layout.removeAllViews();fields.clear();Iterator<String> keys=object.keys();while(keys.hasNext()){String key=keys.next();fields.put(key,field(layout,key,object.opt(key),0));}}
+    void removeField(String key) throws Exception {JSONObject values=read();values.remove(key);rebuild(values);}
     static LinearLayout column(Context c){LinearLayout l=new LinearLayout(c);l.setOrientation(LinearLayout.VERTICAL);return l;}
     static TextView caption(Context c,String text){TextView t=new TextView(c);t.setText(text);t.setTextSize(13);t.setTextColor(new Ui(c).muted);t.setPadding(0,Ui.dp(c,16),0,Ui.dp(c,8));return t;}
     Read field(LinearLayout parent,String key,Object value,int depth) {
@@ -50,6 +51,7 @@ final class NativeForm {
                     child.fields.put(k,child.field(child.layout,k,"",depth+1));
                 }).show();
             });}
+            if(editable&&Arrays.asList("headers","env","custom_headers","args_mapping").contains(key)){Button remove=plainButton();remove.setText("移除字段");parent.addView(remove);remove.setOnClickListener(v->{ArrayList<String> names=new ArrayList<>(child.fields.keySet());if(names.isEmpty()){android.widget.Toast.makeText(context,"没有可移除的字段",android.widget.Toast.LENGTH_SHORT).show();return;}new AlertDialog.Builder(context).setTitle("选择要移除的字段").setItems(names.toArray(new String[0]),(dialog,index)->{try{child.removeField(names.get(index));}catch(Exception error){android.widget.Toast.makeText(context,error.getMessage(),android.widget.Toast.LENGTH_LONG).show();}}).setNegativeButton("取消",null).show();});}
             return child::read;
         }
         if(value instanceof JSONArray){
