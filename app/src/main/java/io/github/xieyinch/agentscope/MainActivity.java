@@ -67,6 +67,7 @@ public class MainActivity extends androidx.appcompat.app.AppCompatActivity {
     @Override public void onCreate(Bundle saved) {
         ui=new Ui(this);setTheme(ui.dark?R.style.AppThemeDark:R.style.AppTheme);
         super.onCreate(saved);
+        getOnBackPressedDispatcher().addCallback(this,new androidx.activity.OnBackPressedCallback(true){@Override public void handleOnBackPressed(){back();}});
         androidx.core.view.WindowCompat.setDecorFitsSystemWindows(getWindow(),false);
         INK=ui.ink;MUTED=ui.muted;ACCENT=ui.blue;BG=ui.bg;
         if(Build.VERSION.SDK_INT>=29)getWindow().getDecorView().setForceDarkAllowed(false);
@@ -149,7 +150,6 @@ public class MainActivity extends androidx.appcompat.app.AppCompatActivity {
     private void start(String title){if(chatComposer!=null){root.removeView(chatComposer);chatComposer=null;}attachmentList=null;visibleChat="";liveResponse=null;activeCompose=null;activeSend=null;epoch++;pendingTasks=0;dirty=()->false;heading.setText(history.isEmpty()?"AgentScope":title);backControl.setVisibility(history.isEmpty()?View.INVISIBLE:View.VISIBLE);body.removeAllViews();status.setVisibility(View.GONE);loading.setVisibility(View.GONE);TextView large=text(title,32,INK);large.setTypeface(null,Typeface.BOLD);large.setLetterSpacing(-0.025f);large.setPadding(0,dp(8),0,dp(18));body.addView(large);scroll.scrollTo(0,0);}
     private void navigate(Runnable next,boolean remember){if(remember&&screen!=null)history.push(screen);screen=next;savedScreens[selectedTab]=next;next.run();}
     private void back(){guard(()->{if(selectedTab==1&&consoleContainer.getVisibility()==View.VISIBLE){switchTab(0);return;}if(!history.isEmpty())navigate(history.pop(),false);else if(selectedTab!=0)switchTab(0);else confirm(streaming!=null?"退出应用？Agent 任务仍在服务端运行。":"退出 AgentScope 随行？",this::finish);});}
-    @Override public void onBackPressed(){back();}
     private void info(String message){status.setText(message);status.setTextColor(INK);status.setVisibility(View.VISIBLE);}
     private void failure(Exception e){status.setText(e.getMessage()==null?"操作失败，请重试":e.getMessage());status.setTextColor(ui.red);status.setVisibility(View.VISIBLE);}
     private void task(Job job,Result result){
