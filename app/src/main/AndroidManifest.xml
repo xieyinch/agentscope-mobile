@@ -1,8 +1,16 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
-    <application android:label="AgentScope 随行" android:theme="@style/AppTheme"
+    <application android:name="cn.qwenpaw.android.PawApplication" android:label="AgentScope 随行" android:theme="@style/AppTheme"
         android:icon="@drawable/ic_launcher" android:allowBackup="false"
         android:usesCleartextTraffic="false" android:supportsRtl="true">
+        <provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.updates" android:exported="false" android:grantUriPermissions="true"><meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/console_files" /></provider>
+        <activity android:name="cn.qwenpaw.android.MainActivity" android:theme="@style/ConsoleTheme" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity android:name="cn.qwenpaw.android.SkillsActivity" android:theme="@style/ConsoleTheme" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity android:name="cn.qwenpaw.android.ToolsActivity" android:theme="@style/ConsoleTheme" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity android:name="cn.qwenpaw.android.SettingsActivity" android:theme="@style/ConsoleTheme" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity android:name="cn.qwenpaw.android.AgentDocumentsActivity" android:theme="@style/ConsoleTheme" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity android:name="cn.qwenpaw.android.AccountActivity" android:theme="@style/ConsoleTheme" android:exported="false" android:windowSoftInputMode="adjustResize" />
+        <activity android:name="cn.qwenpaw.android.UpdateRecoveryActivity" android:theme="@style/ConsoleTheme" android:exported="false" android:windowSoftInputMode="adjustResize" />
         <activity android:name=".MainActivity" android:exported="true"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>

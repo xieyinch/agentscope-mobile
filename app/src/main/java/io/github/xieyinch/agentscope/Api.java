@@ -86,7 +86,8 @@ final class Api {
         for(String key:new String[]{"instance","instanceToken","instanceCookies","appId"})secrets.put(key,"");
         saveTokens(data); secrets.put("email",email);
     }
-    void clearLocalSession(){platformCookies.clear();ConsoleSession.OriginCookies old=instanceCookies;if(old!=null)old.clear();instanceCookies=null;secrets.clear();}
+    void clearMemorySession(){platformCookies.clear();ConsoleSession.OriginCookies old=instanceCookies;if(old!=null)old.clear();instanceCookies=null;}
+    void clearLocalSession(){clearMemorySession();secrets.clear();}
     private void saveTokens(JSONObject data) throws Exception {
         String access=str(data,"accessToken");
         if(access.isEmpty())throw new IOException("服务端未返回有效登录凭据");

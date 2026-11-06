@@ -97,6 +97,7 @@ public class MainActivity extends Activity {
     }
     private Runnable tabRoot(int index){switch(index){case 1:return this::chats;case 2:return this::settings;case 3:return this::community;case 4:return this::account;default:return this::dashboard;}}
     private void switchTab(int index){
+        if(index==1&&api.connected()){ConsoleBridge.open(this);return;}
         if(screen!=null){savedScreens[selectedTab]=screen;tabScroll[selectedTab]=scroll.getScrollY();}
         selectedTab=index;history=savedHistories.get(index);screen=savedScreens[index]==null?tabRoot(index):savedScreens[index];
         for(int i=0;i<5;i++){tabIcons[i].tint(i==index?ACCENT:MUTED);tabLabels[i].setTextColor(i==index?ACCENT:MUTED);tabLabels[i].setTypeface(null,i==index?Typeface.BOLD:Typeface.NORMAL);}
@@ -219,18 +220,25 @@ public class MainActivity extends Activity {
         body.addView(button("连接实例",()->navigate(this::connection,true)));
         body.addView(button("我的帖子",()->navigate(()->articleList("我的帖子","/api/v1/community/me/articles?page=1&page_size=30"),true)));
         body.addView(button("我的收藏",()->navigate(()->articleList("我的收藏","/api/v1/community/me/favorites?page=1&page_size=30"),true)));
-        body.addView(button("退出登录",()->change("退出并移除此应用中保存的全部登录状态？",()->{try{api.platform("POST","/api/v1/auth/logout",null);}finally{api.clearLocalSession();drafts.clear();attachments.clear();activeModels.clear();}return null;},this::account)));
-        section("AgentScope 随行 · 0.3.1");note("为 AgentScope 打造的独立安卓客户端。部分高级能力仍在完善中。");
+        body.addView(button("退出登录",()->change("退出并移除此应用中保存的全部登录状态？",()->{try{api.platform("POST","/api/v1/auth/logout",null);}finally{ConsoleBridge.disconnect(this);api.clearLocalSession();drafts.clear();attachments.clear();activeModels.clear();}return null;},this::account)));
+        section("AgentScope 随行 · "+BuildConfig.VERSION_NAME);note("为 AgentScope 打造的独立安卓客户端。部分高级能力仍在完善中。");
     }
 
     private void settings(){
         start("Agent 配置");if(!requireInstance())return;
+        card("完整控制台","对话、工作区、模型、思考强度、审批、命令和上下文",()->ConsoleBridge.open(this));
         card("当前智能体",api.agent,()->navigate(()->resources("智能体","/agents","agents"),true));
         String[][] modules={{"运行配置","/workspace/running-config","config"},{"定时任务","/cron/jobs","cron"},{"频道","/config/channels","config"},{"心跳","/config/heartbeat","config"},{"技能","/skills","skills"},{"工具","/tools","tools"},{"MCP 服务","/mcp","mcp"},{"ACP","/config/acp","config"},{"模型供应商","/models","models"},{"扩展插件","/plugins","plugins"},{"技能池","/skills/pool","pool"},{"环境变量","/envs","env"},{"工具安全","/config/security/tool-guard","config"},{"沙箱安全","/config/security/sandbox","config"},{"文件保护","/config/security/file-guard","config"},{"备份","/backups","backups"}};
-        for(String[] m:modules)card(m[0],"查看与管理",()->navigate(()->resources(m[0],m[1],m[2]),true));
-        card("Token 消耗","最近 7 天",()->{java.time.LocalDate today=java.time.LocalDate.now();navigate(()->readList("Token 消耗","/token-usage?start_date="+today.minusDays(6)+"&end_date="+today),true);});
-        card("进程状态","诊断 Agent 服务",()->navigate(()->readList("进程状态","/agent/admin/status"),true));
+        for(String[] m:modules)card(m[0],"查看与管理",()->{
+            if(m[2].equals("skills")||m[2].equals("pool")){ConsoleBridge.open(this,cn.qwenpaw.android.SkillsActivity.class,m[2].equals("pool")?1:-1);return;}
+            if(m[2].equals("tools")){ConsoleBridge.open(this,cn.qwenpaw.android.ToolsActivity.class,-1);return;}
+            if(m[0].equals("运行配置")||m[2].equals("env")){ConsoleBridge.open(this,cn.qwenpaw.android.SettingsActivity.class,m[2].equals("env")?1:0);return;}
+            navigate(()->resources(m[0],m[1],m[2]),true);
+        });
+        card("Token 消耗","用量趋势、模型分类与日期筛选",()->ConsoleBridge.open(this,cn.qwenpaw.android.SettingsActivity.class,2));
+        card("运行诊断","服务版本、就绪状态与后端日志",()->navigate(this::runtimeDiagnostics,true));
     }
+    private void runtimeDiagnostics(){start("运行诊断");if(!requireInstance())return;body.addView(button("刷新诊断",this::runtimeDiagnostics));for(String[] endpoint:new String[][]{{"服务版本","/version"},{"就绪状态","/healthz"},{"后端日志","/console/debug/backend-logs?lines=200"}}){task(()->api.instance("GET",endpoint[1],null),value->{section(endpoint[0]);body.addView(new NativeForm(this,Api.object(value),false).layout);});}}
     private void readList(String title,String path){start(title);if(!requireInstance())return;task(()->api.instance("GET",path,null),v->{JSONArray list=Api.array(v);if(list.length()>0){for(int i=0;i<list.length();i++){Object value=list.opt(i);card(value instanceof JSONObject?name((JSONObject)value):Api.text(value),Api.text(value),()->detail(title,value));}}else body.addView(new NativeForm(this,v instanceof JSONObject?(JSONObject)v:Api.obj("内容",v),false).layout);});}
     private void resources(String title,String path,String kind){
         start(title);if(!requireInstance())return;
@@ -466,6 +474,7 @@ public class MainActivity extends Activity {
     private void market(boolean plugin){
         start(plugin?"插件市场":"技能市场");String path="/api/v1/"+(plugin?"plugins":"skills");task(()->Api.unwrap(api.platform("GET",path+"?page=1&pageSize=30",null)),v->{JSONArray a=Api.array(v);for(int i=0;i<a.length();i++){JSONObject item=a.optJSONObject(i);if(item==null)continue;String identifier=id(item);card(item.optString("name",item.optString("skill_code",identifier)),item.optString("description",""),()->task(()->Api.unwrap(api.platform("GET",path+"/"+Uri.encode(identifier),null)),detail->{detail(plugin?"插件详情":"技能详情",detail);}));}note("市场安装及分页仍待适配。");});
     }
+    @Override protected void onResume(){super.onResume();if(api!=null&&getApplication() instanceof cn.qwenpaw.android.PawApplication app&&app.chat!=null&&app.chat.loggedIn&&app.chat.base.equals(api.base())){api.agent=app.chat.agent;getPreferences(0).edit().putString("agent",api.agent).apply();}}
     @Override protected void onSaveInstanceState(Bundle state){super.onSaveInstanceState(state);state.putString("drafts",new JSONObject(drafts).toString());state.putString("attachments",new JSONObject(attachments).toString());}
     @Override protected void onDestroy(){epoch++;handler.removeCallbacksAndMessages(null);if(streaming!=null)streaming.cancel();work.shutdownNow();super.onDestroy();}
 }
