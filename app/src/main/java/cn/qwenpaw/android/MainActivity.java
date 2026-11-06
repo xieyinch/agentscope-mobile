@@ -106,7 +106,7 @@ public final class MainActivity extends AppCompatActivity implements ChatControl
         if(c.signingIn && !target.equals(loginTarget))c.cancelLogin();
         screen="login";loginTarget=target;connectFrom=c.signIns;accountLine=null;titleBox=null;if(!c.signingIn)c.loginStatus="";
         LinearLayout outer=column();setRoot(outer);ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setVerticalScrollBarEnabled(false);outer.addView(scroll,new LinearLayout.LayoutParams(-1,-1));LinearLayout form=column();form.setPadding(dp(8),dp(28),dp(8),dp(24));scroll.addView(form);
-        LinearLayout brand=row();ImageView logo=design.icon("paw",ACCENT,32);brand.addView(logo);TextView word=design.heading("QwenPaw",20);word.setPadding(dp(10),0,0,0);brand.addView(word);form.addView(brand);design.gap(form,24);
+        LinearLayout brand=row();ImageView logo=design.icon("paw",ACCENT,32);brand.addView(logo);TextView word=design.heading("AgentScope 随行",20);word.setPadding(dp(10),0,0,0);brand.addView(word);form.addView(brand);design.gap(form,24);
         form.addView(design.heading("连接你的智能体",30));design.gap(form,12);TextView subtitle=text(account!=null?"账户 · "+Accounts.label(account):c.accounts.length()>0?"添加新账户，已保存的账户不受影响。":"想法、问题和灵感，都从这里开始。",14,MUTED);subtitle.setLineSpacing(dp(4),1);form.addView(subtitle);design.gap(form,12);
         String server=account!=null?Json.str(account,"base"):c.accounts.length()==0?c.base:BuildConfig.DEFAULT_SERVER;
         okhttp3.HttpUrl current=null;try{current=okhttp3.HttpUrl.get(server);}catch(Exception ignored){}
@@ -204,7 +204,7 @@ public final class MainActivity extends AppCompatActivity implements ChatControl
         }
         if(!c.loggedIn){showLogin(c.accountId);return;}
         if(!screen.equals("chat"))return;
-        title.setText(c.chat==null?"QwenPaw":Json.str(c.chat,"name","新对话"));String account=c.accountLabel();accountLine.setText(account);accountLine.setVisibility(account.isEmpty()?View.GONE:View.VISIBLE);titleBox.setContentDescription(title.getText()+(account.isEmpty()?"":"，"+account)+"，切换账户");status.setText(c.status+(c.uploads>0?" · 正在上传 "+c.uploads+" 个文件":""));status.setVisibility(c.status.equals("已连接") && c.uploads==0?View.GONE:View.VISIBLE);
+        title.setText(c.chat==null?"AgentScope 随行":Json.str(c.chat,"name","新对话"));String account=c.accountLabel();accountLine.setText(account);accountLine.setVisibility(account.isEmpty()?View.GONE:View.VISIBLE);titleBox.setContentDescription(title.getText()+(account.isEmpty()?"":"，"+account)+"，切换账户");status.setText(c.status+(c.uploads>0?" · 正在上传 "+c.uploads+" 个文件":""));status.setVisibility(c.status.equals("已连接") && c.uploads==0?View.GONE:View.VISIBLE);
         agentButton.setText(agentName());modelButton.setText(currentModelLabel());
         loopButton.setText("Loop · "+loopName(c.selectedLoop));levelButton.setText(levelName(c.approvalLevel));design.tone((MaterialButton)levelButton,levelBackground(c.approvalLevel),levelInk(c.approvalLevel));((MaterialButton)levelButton).setIcon(new Ui.Glyph(levelGlyph(c.approvalLevel),levelInk(c.approvalLevel)));updateUsage();updateSend();
         if(!input.getText().toString().equals(c.draft)){syncing=true;input.setText(c.draft);input.setSelection(input.length());syncing=false;}
@@ -278,8 +278,8 @@ public final class MainActivity extends AppCompatActivity implements ChatControl
         BottomSheetDialog dialog=sheet("工具审批模式","决定智能体何时需要你的确认",choices);choices.setOnItemClickListener((p,v,index,id)->{dialog.dismiss();c.setApprovalLevel(levels[index]);});
     }
     private int levelAccent(String level){return switch(level){case "STRICT"->0xffff4d4f;case "SMART"->0xfffaad14;case "OFF"->0xff52c41a;default->0xff1890ff;};}
-    private int levelInk(String level){return switch(level){case "STRICT"->0xffb8323b;case "SMART"->0xff946200;case "OFF"->0xff2e7d17;default->0xff0969bb;};}
-    private int levelBackground(String level){return switch(level){case "STRICT"->0xffffecec;case "SMART"->0xfffff5dc;case "OFF"->0xffedf8e7;default->0xffe9f3ff;};}
+    private int levelInk(String level){if(Ui.BG==0xff000000)return switch(level){case "STRICT"->0xffff9292;case "SMART"->0xffffd166;case "OFF"->0xff83dfa6;default->0xff74b1ff;};return switch(level){case "STRICT"->0xffb8323b;case "SMART"->0xff946200;case "OFF"->0xff2e7d17;default->0xff0969bb;};}
+    private int levelBackground(String level){if(Ui.BG==0xff000000)return switch(level){case "STRICT"->0xff3d1419;case "SMART"->0xff3d2b0d;case "OFF"->0xff132f25;default->0xff102d50;};return switch(level){case "STRICT"->0xffffecec;case "SMART"->0xfffff5dc;case "OFF"->0xffedf8e7;default->0xffe9f3ff;};}
     private String levelGlyph(String level){return switch(level){case "STRICT"->"ban";case "SMART"->"warning";case "OFF"->"check";default->"shield";};}
 
     private void thinking(){
@@ -625,7 +625,7 @@ public final class MainActivity extends AppCompatActivity implements ChatControl
         catch(Exception e){file.delete();c.failure(e);}
     }
     private String safeName(String name){if(name==null || name.isBlank())return "qwenpaw-file";return name.replaceAll("[\\\\/:*?\"<>|\\p{Cntrl}]","_");}
-    private void exportChat(){StringBuilder out=new StringBuilder("# "+(c.chat==null?"QwenPaw":c.chat.optString("name"))+"\n\n");for(Transcript.Row r:c.transcript.rows()){out.append("## ").append(r.kind.equals("file")?"附件":r.kind.equals("tool")?r.title:r.role.equals("user")?"你":"QwenPaw").append("\n\n").append(r.params).append(r.text).append(r.url.isEmpty()?"":"\n"+r.url).append("\n\n");}exportText=out.toString();saveFile("export:markdown","QwenPaw-对话.md");}
+    private void exportChat(){StringBuilder out=new StringBuilder("# "+(c.chat==null?"AgentScope 随行":c.chat.optString("name"))+"\n\n");for(Transcript.Row r:c.transcript.rows()){out.append("## ").append(r.kind.equals("file")?"附件":r.kind.equals("tool")?r.title:r.role.equals("user")?"你":"QwenPaw").append("\n\n").append(r.params).append(r.text).append(r.url.isEmpty()?"":"\n"+r.url).append("\n\n");}exportText=out.toString();saveFile("export:markdown","AgentScope-对话.md");}
     private String exportText="";
     @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);if(result!=RESULT_OK || data==null)return;
         if(request==PICK){if(pickerScope!=c.scope()){notice("会话已切换，请重新选择文件");return;}ArrayList<Uri> uris=new ArrayList<>();if(data.getClipData()!=null){for(int i=0;i<Math.min(8,data.getClipData().getItemCount());i++)uris.add(data.getClipData().getItemAt(i).getUri());}else if(data.getData()!=null)uris.add(data.getData());for(Uri uri:uris)prepareUpload(uri,pickerScope);}

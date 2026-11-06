@@ -44,14 +44,14 @@ public class IntegratedConsoleTest {
         ApiClient.useTransport(new OkHttpClient.Builder().addInterceptor(chain->{try{Request request=chain.request();assertEquals("Bearer fixture-instance-token",request.header("Authorization"));assertEquals("default",request.header("X-Agent-Id"));String body;
             if(request.url().encodedPath().equals("/api/console/chat")){okio.Buffer buffer=new okio.Buffer();request.body().writeTo(buffer);sent.set(Json.object(Json.parse(buffer.readUtf8())));body="data: "+message()+"\n\ndata: {\"object\":\"response\",\"status\":\"completed\"}\n\n";}
             else body=payload(request).toString();
-            return new Response.Builder().request(request).protocol(Protocol.HTTP_1_1).code(200).message("OK").body(ResponseBody.create(body,MediaType.get(request.url().encodedPath().equals("/api/console/chat")?"text/event-stream":"application/json"))).build();
+            return new Response.Builder().request(request).protocol(Protocol.HTTP_1_1).code(200).message("OK").header("Content-Type",request.url().encodedPath().equals("/api/console/chat")?"text/event-stream":"application/json").body(ResponseBody.create(body,MediaType.get(request.url().encodedPath().equals("/api/console/chat")?"text/event-stream":"application/json"))).build();
         }catch(Exception error){throw new IOException(error);}}).build());
         InstrumentationRegistry.getInstrumentation().runOnMainSync(()->{try{controller=app.ensureChat();controller.bindManaged("https://console-fixture.invalid","fixture-instance-token","default");}catch(Exception error){throw new AssertionError(error);}});
     }
     @After public void clear(){InstrumentationRegistry.getInstrumentation().runOnMainSync(()->{controller.forgetManaged();androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM);});}
     private void await(java.util.function.BooleanSupplier condition) throws Exception {long deadline=System.currentTimeMillis()+7000;while(System.currentTimeMillis()<deadline){AtomicBoolean ready=new AtomicBoolean();InstrumentationRegistry.getInstrumentation().runOnMainSync(()->ready.set(condition.getAsBoolean()));if(ready.get())return;Thread.sleep(30);}fail("Native console state did not settle: "+controller.status+"; running="+controller.running+"; busy="+controller.busy+"; sent="+(sent.get()!=null)+"; rows="+controller.transcript.rows().size());}
     private void screenshot(String name) throws Exception {
-        InstrumentationRegistry.getInstrumentation().waitForIdleSync();Bitmap bitmap=InstrumentationRegistry.getInstrumentation().getUiAutomation().takeScreenshot();assertNotNull(bitmap);Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();ContentValues values=new ContentValues();values.put(android.provider.MediaStore.Images.Media.DISPLAY_NAME,name+".png");values.put(android.provider.MediaStore.Images.Media.MIME_TYPE,"image/png");values.put(android.provider.MediaStore.Images.Media.RELATIVE_PATH,"Pictures/agentscope-ui-preview");android.net.Uri uri=context.getContentResolver().insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI,values);try(OutputStream out=context.getContentResolver().openOutputStream(uri)){bitmap.compress(Bitmap.CompressFormat.PNG,100,out);}bitmap.recycle();
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync();java.util.concurrent.CountDownLatch frame=new java.util.concurrent.CountDownLatch(1);InstrumentationRegistry.getInstrumentation().runOnMainSync(()->{java.util.Collection<android.app.Activity> activities=androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(androidx.test.runner.lifecycle.Stage.RESUMED);assertFalse(activities.isEmpty());View root=activities.iterator().next().getWindow().getDecorView();root.postOnAnimation(()->root.postOnAnimation(frame::countDown));});assertTrue(frame.await(3,TimeUnit.SECONDS));InstrumentationRegistry.getInstrumentation().waitForIdleSync();Bitmap bitmap=InstrumentationRegistry.getInstrumentation().getUiAutomation().takeScreenshot();assertNotNull(bitmap);Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();ContentValues values=new ContentValues();values.put(android.provider.MediaStore.Images.Media.DISPLAY_NAME,name+".png");values.put(android.provider.MediaStore.Images.Media.MIME_TYPE,"image/png");values.put(android.provider.MediaStore.Images.Media.RELATIVE_PATH,"Pictures/agentscope-ui-preview");android.net.Uri uri=context.getContentResolver().insert(android.provider.MediaStore.Images.Media.EXTERNAL_CONTENT_URI,values);try(OutputStream out=context.getContentResolver().openOutputStream(uri)){bitmap.compress(Bitmap.CompressFormat.PNG,100,out);}bitmap.recycle();
     }
     @Test public void managedSessionRendersCommandsAndPersistsChatAcrossActivityRecreation() throws Exception {
         try(ActivityScenario<MainActivity> scene=ActivityScenario.launch(MainActivity.class)){
@@ -65,7 +65,8 @@ public class IntegratedConsoleTest {
             scene.onActivity(a->((android.view.inputmethod.InputMethodManager)a.getSystemService(Context.INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(a.getWindow().getDecorView().getWindowToken(),0));
 
             scene.onActivity(a->{controller.draft="你好，请帮我整理文档";controller.send();});
-            await(()->sent.get()!=null&&!controller.running&&!controller.busy&&controller.transcript.rows().size()>0);
+            await(()->sent.get()!=null&&!controller.running&&!controller.busy&&controller.transcript.rows().stream().anyMatch(row->row.role.equals("assistant")&&row.text.contains("Markdown")));
+            assertEquals("已完成",controller.status);assertEquals("",controller.transcript.error);
             assertEquals("user",sent.get().getJSONArray("input").getJSONObject(0).getString("role"));
             screenshot("15-integrated-messages");
             scene.onActivity(a->{controller.draft="保留未发送草稿";controller.saveDraft();});scene.recreate();
@@ -83,7 +84,7 @@ public class IntegratedConsoleTest {
         }
         InstrumentationRegistry.getInstrumentation().runOnMainSync(()->androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES));
         try(ActivityScenario<MainActivity> dark=ActivityScenario.launch(MainActivity.class)){
-            dark.onActivity(a->{assertEquals(0xff000000,Ui.BG);assertEquals(0xff0a84ff,MainActivity.ACCENT);assertEquals(0xfff2f2f7,MainActivity.INK);});
+            dark.onActivity(a->{assertEquals(0xff000000,Ui.BG);assertEquals(0xff0a84ff,MainActivity.ACCENT);assertEquals(0xfff2f2f7,MainActivity.INK);try{java.lang.reflect.Method ink=MainActivity.class.getDeclaredMethod("levelInk",String.class),background=MainActivity.class.getDeclaredMethod("levelBackground",String.class);ink.setAccessible(true);background.setAccessible(true);assertTrue(androidx.core.graphics.ColorUtils.calculateContrast((Integer)ink.invoke(a,"AUTO"),(Integer)background.invoke(a,"AUTO"))>=4.5);}catch(Exception error){throw new AssertionError(error);}});
             screenshot("18-integrated-dark");
         }
     }

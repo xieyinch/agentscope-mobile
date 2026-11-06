@@ -12,7 +12,7 @@ public class ChatExperienceTest {
         assertEquals("console:android-example",request.optString("session_id"));
         assertEquals("console",request.optString("channel"));
         assertEquals("default",request.optString("user_id"));
-        assertEquals("New Chat",request.optString("name"));
+        assertEquals("新的对话",request.optString("name"));
         assertEquals(request.optString("name"),Json.object(request.opt("meta")).optString("console_placeholder_name"));
     }
     @Test public void generatedTitleRefreshPreservesSessionIdentityAndMetadata() {

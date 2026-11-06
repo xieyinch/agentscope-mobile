@@ -9,8 +9,8 @@ import java.util.*;
 final class ChatHistory {
     static JSONObject newConsoleChat(String sessionId) {
         // The server upgrades this explicit placeholder on the first textual turn, then generates a title.
-        return Json.obj("name","New Chat","session_id",sessionId,"user_id","default","channel","console",
-                "meta",Json.obj("console_placeholder_name","New Chat"));
+        return Json.obj("name","新的对话","session_id",sessionId,"user_id","default","channel","console",
+                "meta",Json.obj("console_placeholder_name","新的对话"));
     }
     static final long PENDING_TTL_MS=24L*60*60*1000;
     /** Main-surface list/detail paths; PawApp-owned chats stay inside their owning app like on the web. */
