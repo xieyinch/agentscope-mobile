@@ -34,7 +34,7 @@ public final class ConsoleFragment extends androidx.fragment.app.Fragment implem
     private android.content.Context context;
     private FrameLayout hostView;
     private boolean embedded(){return getArguments()!=null&&getArguments().getBoolean("embedded");}
-    private boolean isFinishing(){return !isAdded()||requireActivity().isFinishing();}
+    private boolean isFinishing(){return !isAdded()||isHidden()||requireActivity().isFinishing();}
     private boolean isDestroyed(){return !isAdded()||getView()==null;}
     private android.content.ContentResolver getContentResolver(){return context.getContentResolver();}
     private File getCacheDir(){return context.getCacheDir();}

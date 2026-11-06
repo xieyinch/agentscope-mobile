@@ -512,7 +512,10 @@ public class MainActivity extends androidx.appcompat.app.AppCompatActivity {
     private void market(boolean plugin){
         start(plugin?"插件市场":"技能市场");String path="/api/v1/"+(plugin?"plugins":"skills");task(()->Api.unwrap(api.platform("GET",path+"?page=1&pageSize=30",null)),v->{JSONArray a=Api.array(v);for(int i=0;i<a.length();i++){JSONObject item=a.optJSONObject(i);if(item==null)continue;String identifier=id(item);card(item.optString("name",item.optString("skill_code",identifier)),item.optString("description",""),()->task(()->Api.unwrap(api.platform("GET",path+"/"+Uri.encode(identifier),null)),detail->{detail(plugin?"插件详情":"技能详情",detail);}));}note("市场安装及分页仍待适配。");});
     }
-    @Override protected void onResume(){super.onResume();if(api!=null&&getApplication() instanceof cn.qwenpaw.android.PawApplication app&&app.chat!=null&&app.chat.loggedIn&&app.chat.base.equals(api.base())){boolean changed=!api.agent.equals(app.chat.agent);api.agent=app.chat.agent;getPreferences(0).edit().putString("agent",api.agent).apply();if(changed&&root!=null){for(int i=0;i<3;i++){savedHistories.get(i).clear();savedScreens[i]=null;}screen=null;switchTab(2);Toast.makeText(this,"智能体已切换，管理页面已重新加载",Toast.LENGTH_SHORT).show();}}}
+    @Override protected void onResume(){
+        super.onResume();if(api==null)return;String previous=api.agent;syncConsoleAgent();
+        if(!previous.equals(api.agent)&&root!=null&&selectedTab<3&&selectedTab!=1){screen=null;switchTab(selectedTab);}
+    }
     @Override protected void onSaveInstanceState(Bundle state){super.onSaveInstanceState(state);state.putInt("selectedTab",selectedTab);state.putString("drafts",new JSONObject(drafts).toString());state.putString("attachments",new JSONObject(attachments).toString());}
     @Override protected void onDestroy(){epoch++;handler.removeCallbacksAndMessages(null);if(streaming!=null)streaming.cancel();work.shutdownNow();super.onDestroy();}
 }
