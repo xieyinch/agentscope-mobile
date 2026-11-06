@@ -82,7 +82,7 @@ public final class ConsoleFragment extends androidx.fragment.app.Fragment implem
             if(state!=null){downloadUrl=state.getString("downloadUrl","");downloadName=state.getString("downloadName","");pickerScope=state.getLong("pickerScope",-1);downloadScope=state.getLong("downloadScope",-1);listState=state.getParcelable("listState");loginTarget=state.getString("loginTarget","");}
             boolean form=state!=null && "login".equals(state.getString("screen"));
             if(c.loggedIn && !form)showChat();else showLogin(form?loginTarget:c.accountId);
-            if(c.loggedIn && c.agents.length()==0)c.start();
+            if(c.loggedIn && c.agents.length()==0&&!isHidden())c.start();
         }catch(RuntimeException e){app.markCrash();openRecovery();}
         return hostView;
     }
@@ -90,7 +90,7 @@ public final class ConsoleFragment extends androidx.fragment.app.Fragment implem
     public boolean sessionActive(){return isAdded()&&(c==null||c.loggedIn&&((PawApplication)requireActivity().getApplication()).chat==c);}
     @Override public void onStart(){super.onStart();if(c!=null&&!isFinishing()&&!isHidden())c.attach(this);ui.postDelayed(()->{if(!isFinishing()&&!isDestroyed())updater.check(false);},1500);}
     @Override public void onResume(){super.onResume();lastNavigation.clear();if(updater!=null&&!isFinishing())updater.resume();}
-    @Override public void onHiddenChanged(boolean hidden){super.onHiddenChanged(hidden);if(c==null)return;if(hidden){c.saveDraft();c.detach(this);hideKeyboard();if(activePanel!=null)activePanel.dismiss();}else c.attach(this);}
+    @Override public void onHiddenChanged(boolean hidden){super.onHiddenChanged(hidden);if(c==null)return;if(hidden){c.saveDraft();c.detach(this);hideKeyboard();if(activePanel!=null)activePanel.dismiss();}else{if(c.loggedIn&&c.agents.length()==0)c.start();c.attach(this);}}
     @Override public void onStop(){if(c!=null){c.saveDraft();c.detach(this);}super.onStop();}
     @Override public void onDestroyView(){if(updater!=null)updater.close();if(activePanel!=null)activePanel.dismiss();ui.removeCallbacksAndMessages(null);if(c!=null){c.saveDraft();c.detach(this);}if(list!=null)list.setAdapter(null);super.onDestroyView();}
     @Override public void onSaveInstanceState(Bundle state){
