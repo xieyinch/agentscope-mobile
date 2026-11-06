@@ -115,6 +115,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          TAG: native-0.3.1-build-${{ github.run_number }}
+          TAG: native-0.3.2-build-${{ github.run_number }}
           COMMIT_SHA: ${{ github.sha }}
         run: gh release create "$TAG" dist/* --repo "$REPO" --target "$COMMIT_SHA" --title "AgentScope Android $TAG" --prerelease --notes-file RELEASE_NOTES.md

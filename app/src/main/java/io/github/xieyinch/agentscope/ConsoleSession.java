@@ -41,13 +41,15 @@ final class ConsoleSession {
         String token=suppliedToken.trim();
         if(token.isEmpty()&&(!managed||cookies.serialize().isEmpty())){String query=entry.queryParameter("token");if(query!=null)token=query;}
         HttpUrl base=apiBase(current);
-        Request.Builder verify=new Request.Builder().url(base.newBuilder().addPathSegments("api/agent/health").build()).get();
+        Request.Builder verify=new Request.Builder().url(base.newBuilder().addPathSegments("api/agents").build()).get();
         if(!token.isEmpty())verify.header("Authorization","Bearer "+token);
         try(Response response=client.newCall(verify.build()).execute()){
             if(response.code()==401)throw new IOException("控制台入口已打开，但实例认证未通过（实例 401）。请重新获取平台访问链接，或填写实例访问令牌。");
-            if(!response.isSuccessful())throw new IOException("实例连接检查失败（"+response.code()+"）");
+            if(!response.isSuccessful())throw new IOException("实例连接检查失败（GET /api/agents，"+response.code()+"）");
             String probe=response.body()==null?"":response.body().string();
             if(probe.trim().startsWith("<"))throw new IOException("实例返回了访问链接失效页面，请返回部署页重新连接");
+            try{if(!(new org.json.JSONObject(probe).opt("agents") instanceof org.json.JSONArray))throw new IOException("实例连接检查返回了非 Agent 列表，请检查实例地址（GET /api/agents）");}
+            catch(org.json.JSONException malformed){throw new IOException("实例连接检查未返回有效 JSON（GET /api/agents）",malformed);}
         }
         return new ConsoleSession(base,token,cookies);
     }

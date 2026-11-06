@@ -25,23 +25,23 @@ public class ConsoleSessionTest {
     @Test public void exchangesSignedEntryForCookieBeforeHealthProbe() throws Exception {
         server.enqueue(new MockResponse().setResponseCode(302).setHeader("Set-Cookie","gateway=fake-session; Path=/; Secure; HttpOnly").setHeader("Location","/console/chat"));
         server.enqueue(new MockResponse().setBody("<html>Console</html>"));
-        server.enqueue(new MockResponse().setBody("{\"status\":\"ok\"}"));
+        server.enqueue(new MockResponse().setBody("{\"agents\":[]}"));
         ConsoleSession session=ConsoleSession.open(client,server.url("/console/chat?ticket=synthetic-ticket").toString(),"",true);
         RecordedRequest first=server.takeRequest(1,TimeUnit.SECONDS),landing=server.takeRequest(1,TimeUnit.SECONDS),probe=server.takeRequest(1,TimeUnit.SECONDS);
         assertEquals("/console/chat?ticket=synthetic-ticket",first.getPath());
         assertNull(first.getHeader("Authorization"));
         assertEquals("gateway=fake-session",landing.getHeader("Cookie"));
-        assertEquals("/api/agent/health",probe.getPath());
+        assertEquals("/api/agents",probe.getPath());
         assertEquals("gateway=fake-session",probe.getHeader("Cookie"));
         assertEquals("",session.token);
     }
     @Test public void managedGatewayTokenIsNotMisusedAsRuntimeBearer() throws Exception {
-        server.enqueue(new MockResponse().setHeader("Set-Cookie","gateway=test; Path=/; Secure; HttpOnly").setBody("console"));server.enqueue(new MockResponse().setBody("{}"));
+        server.enqueue(new MockResponse().setHeader("Set-Cookie","gateway=test; Path=/; Secure; HttpOnly").setBody("console"));server.enqueue(new MockResponse().setBody("{\"agents\":[]}"));
         ConsoleSession.open(client,server.url("/chat?token=gateway-ticket").toString(),"",true);
         server.takeRequest();assertNull(server.takeRequest().getHeader("Authorization"));
     }
     @Test public void usesExplicitInstanceTokenOnlyForApiProbe() throws Exception {
-        server.enqueue(new MockResponse().setBody("console"));server.enqueue(new MockResponse().setBody("{}"));
+        server.enqueue(new MockResponse().setBody("console"));server.enqueue(new MockResponse().setBody("{\"agents\":[]}"));
         ConsoleSession.open(client,server.url("/console/chat").toString(),"synthetic-runtime-token");
         assertNull(server.takeRequest().getHeader("Authorization"));
         assertEquals("Bearer synthetic-runtime-token",server.takeRequest().getHeader("Authorization"));
@@ -67,7 +67,7 @@ public class ConsoleSessionTest {
     @Test public void retainsReverseProxyPrefixAndDropsEntryQuery() {
         HttpUrl base=ConsoleSession.apiBase(HttpUrl.get("https://example.test/team/console/chat?ticket=secret"));
         assertEquals("https://example.test/team/",base.toString());
-        assertEquals("/team/api/agent/health",base.newBuilder().addPathSegments("api/agent/health").build().encodedPath());
+        assertEquals("/team/api/agents",base.newBuilder().addPathSegments("api/agents").build().encodedPath());
     }
     @Test public void carriesPlatformAccessResponseCookieIntoFirstConsoleNavigation() throws Exception {
         HttpUrl platform=server.url("/").newBuilder().host("platform.agentscope.io").build();
@@ -75,7 +75,7 @@ public class ConsoleSessionTest {
         ConsoleSession.OriginCookies platformJar=new ConsoleSession.OriginCookies(platform);
         server.enqueue(new MockResponse().addHeader("Set-Cookie","gateway=synthetic-session; Domain=agentscope.io; Path=/; Secure; HttpOnly")
             .addHeader("Set-Cookie","platform_only=private-session; Path=/; Secure; HttpOnly").setBody("{\"data\":{}}"));
-        server.enqueue(new MockResponse().setBody("console"));server.enqueue(new MockResponse().setBody("{}"));
+        server.enqueue(new MockResponse().setBody("console"));server.enqueue(new MockResponse().setBody("{\"agents\":[]}"));
         OkHttpClient platformClient=client.newBuilder().cookieJar(platformJar).build();
         try(Response response=platformClient.newCall(new Request.Builder().url(platform.resolve("/api/v1/app/access")).header("Authorization","Bearer synthetic-platform-token").build()).execute()){assertTrue(response.isSuccessful());}
         List<Cookie> inherited=ConsoleSession.managedEntryCookies(platformJar,console);assertEquals(1,inherited.size());
@@ -113,4 +113,22 @@ public class ConsoleSessionTest {
         server.enqueue(new MockResponse().setBody("console"));server.enqueue(new MockResponse().setBody("<html>access expired</html>"));
         try{ConsoleSession.open(client,server.url("/chat").toString(),"");fail();}catch(IOException e){assertTrue(e.getMessage().contains("失效页面"));}
     }
+    @Test public void connectsWhenLegacyHealthRouteDoesNotExist() throws Exception {
+        server.setDispatcher(new Dispatcher(){@Override public MockResponse dispatch(RecordedRequest request){
+            if("/chat".equals(request.getPath()))return new MockResponse().setBody("console");
+            if("/api/agents".equals(request.getPath()))return new MockResponse().setBody("{\"agents\":[{\"id\":\"default\"}]}");
+            return new MockResponse().setResponseCode(404).setBody("{\"detail\":\"Not Found\"}");
+        }});
+        ConsoleSession.open(client,server.url("/chat").toString(),"");
+        assertEquals("/chat",server.takeRequest().getPath());assertEquals("/api/agents",server.takeRequest().getPath());assertEquals(2,server.getRequestCount());
+    }
+    @Test public void refusesSuccessfulJsonFromWrongApi() throws Exception {
+        server.enqueue(new MockResponse().setBody("console"));server.enqueue(new MockResponse().setBody("{\"status\":\"ok\"}"));
+        try{ConsoleSession.open(client,server.url("/chat").toString(),"");fail();}catch(IOException e){assertTrue(e.getMessage().contains("非 Agent 列表"));}
+    }
+    @Test public void doesNotTreatInstanceUnauthorizedAsConnected() throws Exception {
+        server.enqueue(new MockResponse().setBody("console"));server.enqueue(new MockResponse().setResponseCode(401));
+        try{ConsoleSession.open(client,server.url("/chat").toString(),"");fail();}catch(IOException e){assertTrue(e.getMessage().contains("实例 401"));}
+    }
+
 }
