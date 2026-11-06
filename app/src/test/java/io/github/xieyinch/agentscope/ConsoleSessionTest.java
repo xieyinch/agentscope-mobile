@@ -114,7 +114,7 @@ public class ConsoleSessionTest {
         try{ConsoleSession.open(client,server.url("/chat").toString(),"");fail();}catch(IOException e){assertTrue(e.getMessage().contains("失效页面"));}
     }
     @Test public void connectsWhenLegacyHealthRouteDoesNotExist() throws Exception {
-        server.setDispatcher(new Dispatcher(){@Override public MockResponse dispatch(RecordedRequest request){
+        server.setDispatcher(new okhttp3.mockwebserver.Dispatcher(){@Override public MockResponse dispatch(RecordedRequest request){
             if("/chat".equals(request.getPath()))return new MockResponse().setBody("console");
             if("/api/agents".equals(request.getPath()))return new MockResponse().setBody("{\"agents\":[{\"id\":\"default\"}]}");
             return new MockResponse().setResponseCode(404).setBody("{\"detail\":\"Not Found\"}");
