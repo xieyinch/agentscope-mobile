@@ -15,6 +15,7 @@ import static org.junit.Assert.*;
 @RunWith(AndroidJUnit4.class)
 public class NativeUiTest {
     private volatile View screenshotRoot;
+    private android.app.AlertDialog modelDialog;
     private View find(View v,String text){
         if(v instanceof TextView && ((TextView)v).getText().toString().equals(text))return v;
         if(v instanceof ViewGroup){ViewGroup g=(ViewGroup)v;for(int i=0;i<g.getChildCount();i++){View found=find(g.getChildAt(i),text);if(found!=null)return found;}}
@@ -50,6 +51,28 @@ public class NativeUiTest {
             scenario.onActivity(a->{View toggle=find(a.getWindow().getDecorView(),"展开全文");assertNotNull(toggle);assertEquals(View.VISIBLE,toggle.getVisibility());tap(a,"展开全文");TextView content=(TextView)find(a.getWindow().getDecorView(),"第一行\n第二行\n第三行\n第四行\n第五行\n最后一行：完整内容可复制");assertEquals(Integer.MAX_VALUE,content.getMaxLines());assertTrue(content.isTextSelectable());});
             screenshot("08-comment-expanded");
             scenario.onActivity(a->{tap(a,"收起");assertNotNull(find(a.getWindow().getDecorView(),"展开全文"));});
+        }
+    }
+    @Test public void searchesModelsAndShowsNativeChatComposer() throws Exception {
+        try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)){
+            scenario.onActivity(a->{try{
+                screenshotRoot=a.getWindow().getDecorView();new SecretStore(a).put("instance","https://example.invalid");
+                java.lang.reflect.Field apiField=MainActivity.class.getDeclaredField("api");apiField.setAccessible(true);Api api=(Api)apiField.get(a);java.lang.reflect.Field http=Api.class.getDeclaredField("http");http.setAccessible(true);http.set(api,api.http.newBuilder().addInterceptor(chain->{String path=chain.request().url().encodedPath();String response=path.equals("/api/models/active")?"{\"active_llm\":{\"provider_id\":\"p\",\"model\":\"custom\"}}":"{\"messages\":[{\"role\":\"user\",\"content\":\"请帮我分析这份文档\"},{\"role\":\"assistant\",\"content\":\"可以，添加附件后点击发送。这里是原生界面测试数据。\"}]}";return new okhttp3.Response.Builder().request(chain.request()).protocol(okhttp3.Protocol.HTTP_1_1).code(200).message("OK").body(okhttp3.ResponseBody.create(response,okhttp3.MediaType.get("application/json"))).build();}).build());
+                java.lang.reflect.Method conversation=MainActivity.class.getDeclaredMethod("conversation",org.json.JSONObject.class);conversation.setAccessible(true);conversation.invoke(a,Api.obj("id","ui-chat","name","原生对话测试"));
+                assertNotNull(find(screenshotRoot,"添加图片 / 文件"));assertNotNull(find(screenshotRoot,"发送"));
+                java.lang.reflect.Method pending=MainActivity.class.getDeclaredMethod("pendingAttachments",String.class);pending.setAccessible(true);((org.json.JSONArray)pending.invoke(a,"ui-chat")).put(ChatContent.attachment("/media/test.pdf","测试文档.pdf","application/pdf"));
+                java.lang.reflect.Method render=MainActivity.class.getDeclaredMethod("renderAttachments",String.class);render.setAccessible(true);render.invoke(a,"ui-chat");
+            }catch(Exception e){throw new AssertionError(e);}});
+            screenshot("09-chat-composer");
+            scenario.onActivity(a->{tap(a,"附件 · 测试文档.pdf  × 移除");assertNull(find(screenshotRoot,"附件 · 测试文档.pdf  × 移除"));try{
+                java.lang.reflect.Method picker=MainActivity.class.getDeclaredMethod("showModelPicker",org.json.JSONArray.class,Object.class,Runnable.class);picker.setAccessible(true);
+                modelDialog=(android.app.AlertDialog)picker.invoke(a,new org.json.JSONArray().put(Api.obj("id","p","name","示例供应商","models",new org.json.JSONArray().put(Api.obj("id","base","name","基础模型")),"extra_models",new org.json.JSONArray().put(Api.obj("id","custom","name","我的模型")))),Api.obj("active_llm",Api.obj("provider_id","p","model","custom")),(Runnable)()->{});
+            }catch(Exception e){throw new AssertionError(e);}});
+            scenario.onActivity(a->{ViewGroup panel=(ViewGroup)modelDialog.getWindow().getDecorView();java.util.ArrayDeque<View> queue=new java.util.ArrayDeque<>();queue.add(panel);EditText search=null;ListView models=null;while(!queue.isEmpty()){View view=queue.remove();if(view instanceof EditText)search=(EditText)view;if(view instanceof ListView)models=(ListView)view;if(view instanceof ViewGroup){ViewGroup group=(ViewGroup)view;for(int i=0;i<group.getChildCount();i++)queue.add(group.getChildAt(i));}}assertNotNull(search);assertNotNull(models);assertEquals(2,models.getAdapter().getCount());search.setText("custom");assertEquals(1,models.getAdapter().getCount());assertTrue(models.getAdapter().getItem(0).toString().startsWith("✓"));});
+            screenshot("10-model-picker");
+            // The picker is a separate native dialog window.
+            InstrumentationRegistry.getInstrumentation().runOnMainSync(()->{});
+            scenario.onActivity(a->{modelDialog.dismiss();new SecretStore(a).clear();});
         }
     }
     @Test public void preservesPerTabNavigationAndCapturesNativeScreens() throws Exception {
