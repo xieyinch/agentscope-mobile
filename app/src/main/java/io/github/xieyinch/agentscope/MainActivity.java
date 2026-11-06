@@ -50,7 +50,7 @@ public class MainActivity extends Activity {
     private String attachmentChat="";
     private final Map<String,JSONArray> attachments=new HashMap<>();
     private LinearLayout attachmentList,chatComposer;
-    private volatile boolean attachmentUploading;
+    private volatile boolean attachmentUploading,creatingChat;
     private final Map<String,String> activeModels=new HashMap<>();
 
     interface Job {Object run() throws Exception;}
@@ -65,7 +65,7 @@ public class MainActivity extends Activity {
         for(int i=0;i<5;i++)savedHistories.add(new ArrayDeque<>());history=savedHistories.get(0);
         api=new Api(new SecretStore(this));
         api.agent=getPreferences(0).getString("agent","default");
-        if(saved!=null){try{JSONObject values=new JSONObject(saved.getString("drafts","{}"));Iterator<String> keys=values.keys();while(keys.hasNext()){String k=keys.next();drafts.put(k,values.getString(k));}}catch(JSONException ignored){}}
+        if(saved!=null){try{JSONObject values=new JSONObject(saved.getString("drafts","{}"));Iterator<String> keys=values.keys();while(keys.hasNext()){String k=keys.next();drafts.put(k,values.getString(k));}JSONObject files=new JSONObject(saved.getString("attachments","{}"));Iterator<String> names=files.keys();while(names.hasNext()){String k=names.next();attachments.put(k,files.getJSONArray(k));}}catch(JSONException ignored){}}
         root=column();root.setBackgroundColor(BG);
         root.setOnApplyWindowInsetsListener((v,insets)->{
             if(Build.VERSION.SDK_INT>=30){android.graphics.Insets b=insets.getInsets(WindowInsets.Type.systemBars());v.setPadding(b.left,b.top,b.right,b.bottom);}
@@ -77,7 +77,7 @@ public class MainActivity extends Activity {
         heading=text("AgentScope",17,INK);heading.setGravity(Gravity.CENTER);heading.setTypeface(null,Typeface.BOLD);bar.addView(heading,new LinearLayout.LayoutParams(0,-2,1));
         FrameLayout refresh=new FrameLayout(this);refresh.addView(new Ui.Icon(this,"refresh",ACCENT),new FrameLayout.LayoutParams(dp(22),dp(22),Gravity.CENTER));refresh.setContentDescription("刷新当前页面");refresh.setBackground(Ui.ripple(this,BG,22,ACCENT));refresh.setOnClickListener(v->guard(()->{if(screen!=null)screen.run();}));bar.addView(refresh,new LinearLayout.LayoutParams(dp(44),dp(44)));root.addView(bar);
         loading=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);loading.setProgressTintList(android.content.res.ColorStateList.valueOf(ACCENT));loading.setIndeterminateTintList(android.content.res.ColorStateList.valueOf(ACCENT));loading.setIndeterminate(true);loading.setVisibility(View.GONE);root.addView(loading,new LinearLayout.LayoutParams(-1,dp(2)));
-        status=text("",14,ui.red);status.setPadding(dp(16),dp(12),dp(16),dp(12));status.setBackground(Ui.shape(this,ui.surface,12));status.setVisibility(View.GONE);LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(-1,-2);sp.setMargins(dp(20),dp(8),dp(20),0);root.addView(status,sp);
+        status=text("",14,ui.red);status.setPadding(dp(16),dp(12),dp(16),dp(12));status.setBackground(Ui.shape(this,ui.surface,12));status.setVisibility(View.GONE);status.setOnClickListener(v->status.setVisibility(View.GONE));status.setContentDescription("操作提示，点击关闭");LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(-1,-2);sp.setMargins(dp(20),dp(8),dp(20),0);root.addView(status,sp);
         scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setClipToPadding(false);body=column();body.setPadding(dp(20),dp(4),dp(20),dp(28));scroll.addView(body);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
         View divider=new View(this);divider.setBackgroundColor(ui.line);root.addView(divider,new LinearLayout.LayoutParams(-1,dp(1)));
         LinearLayout nav=row();nav.setBackgroundColor(ui.surface);nav.setPadding(dp(6),dp(5),dp(6),dp(5));String[] names={"总览","对话","管理","社区","我的"},icons={"grid","chat","settings","community","person"};
@@ -324,7 +324,7 @@ public class MainActivity extends Activity {
     private void chats(){
         start("对话");if(!requireInstance())return;
         if(streaming!=null)note("有一个任务正在运行，切回其会话查看结果。");
-        body.addView(button("新建对话",()->{if(streaming!=null){info("请先停止当前任务，或等待完成");return;}String sid=UUID.randomUUID().toString();task(()->api.instance("POST","/chats",Api.obj("session_id",sid,"user_id","default","channel","console","name","新的对话")),v->{chat=Api.object(v);navigate(()->conversation(chat),true);});}));
+        body.addView(button("新建对话",()->{if(streaming!=null){info("请先停止当前任务，或等待完成");return;}if(creatingChat){info("正在创建对话，请稍候");return;}creatingChat=true;String sid=UUID.randomUUID().toString();task(()->{try{return api.instance("POST","/chats",Api.obj("session_id",sid,"user_id","default","channel","console","name","新的对话"));}finally{creatingChat=false;}},v->{JSONObject created=Api.object(v);chat=created;navigate(()->conversation(created),true);});}));
         EditText search=input("搜索对话","",false);body.addView(search);LinearLayout chatList=column();body.addView(chatList);
         task(()->api.instance("GET","/chats",null),v->{JSONArray list=Api.array(v);Runnable filter=()->{chatList.removeAllViews();String query=search.getText().toString().trim().toLowerCase(java.util.Locale.ROOT);for(int i=0;i<list.length();i++){JSONObject c=list.optJSONObject(i);if(c==null||!name(c).toLowerCase(java.util.Locale.ROOT).contains(query))continue;Button entry=button(name(c)+"\n"+("running".equals(c.optString("status"))?"正在运行":"空闲"),()->{chat=c;navigate(()->conversation(c),true);});entry.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);chatList.addView(entry);}if(chatList.getChildCount()==0)chatList.addView(text(query.isEmpty()?"还没有对话，点击上方开始":"没有找到匹配的对话",15,MUTED));};filter.run();search.addTextChangedListener(new android.text.TextWatcher(){public void beforeTextChanged(CharSequence t,int a,int b,int c){}public void onTextChanged(CharSequence t,int a,int b,int c){filter.run();}public void afterTextChanged(android.text.Editable e){}});});
     }
@@ -346,7 +346,7 @@ public class MainActivity extends Activity {
             JSONObject request=Api.obj("input",new JSONArray().put(Api.obj("role","user","content",content)),"session_id",c.optString("session_id",cid),"user_id",c.optString("user_id","default"),"channel","console","stream",true,"request_context",Api.obj("chat_id",cid));
             java.util.concurrent.atomic.AtomicBoolean serverError=new java.util.concurrent.atomic.AtomicBoolean(false);StreamState state=new StreamState();long generation=++streamGeneration;streamingChat=cid;streaming=api.stream(request,new Api.StreamListener(){
                 public void event(JSONObject event){if(event.has("error"))serverError.set(true);String merged=state.accept(event);handler.post(()->{if(generation==streamGeneration&&epoch==visit&&!isFinishing()){if(!merged.isEmpty())response.setText(merged);if(event.has("error"))info("服务端报告执行错误，请刷新会话查看详情");}});}
-                public void done(Exception problem){handler.post(()->{if(generation!=streamGeneration)return;streaming=null;if(problem!=null||serverError.get()){if(drafts.getOrDefault(cid,"").isEmpty())drafts.put(cid,prompt);if(pendingAttachments(cid).length()==0)attachments.put(cid,sentAttachments);}if(epoch!=visit||isFinishing())return;send.setEnabled(true);if(problem!=null||serverError.get()){if(compose.length()==0)compose.setText(prompt);if(pendingAttachments(cid).length()==0){attachments.put(cid,sentAttachments);renderAttachments(cid);}if(problem!=null)failure(problem);else info("本次执行失败，草稿和附件已恢复；重试前可先查看历史，避免重复执行。");response.append("\n连接已结束，可刷新会话查看服务端结果。");}else{info("本轮执行结束");task(()->api.instance("GET","/chats/"+Uri.encode(cid),null),history->{JSONArray a=Api.object(history).optJSONArray("messages");if(a!=null)for(int i=a.length()-1;i>=0;i--){JSONObject m=a.optJSONObject(i);if(m!=null&&m.optString("role").equals("assistant")){String t=ChatContent.display(m.opt("content"));if(!t.isEmpty()){response.setText(t);break;}}}});}});}
+                public void done(Exception problem){handler.post(()->{if(generation!=streamGeneration)return;streaming=null;if(problem!=null||serverError.get()){if(drafts.getOrDefault(cid,"").isEmpty())drafts.put(cid,prompt);if(pendingAttachments(cid).length()==0)attachments.put(cid,sentAttachments);}if(epoch!=visit||isFinishing())return;send.setEnabled(true);if(problem!=null||serverError.get()){if(compose.length()==0)compose.setText(prompt);if(pendingAttachments(cid).length()==0)attachments.put(cid,sentAttachments);renderAttachments(cid);if(problem!=null)failure(problem);else info("本次执行失败，草稿和附件已恢复；重试前可先查看历史，避免重复执行。");response.append("\n连接已结束，可刷新会话查看服务端结果。");}else{info("本轮执行结束");task(()->api.instance("GET","/chats/"+Uri.encode(cid),null),history->{JSONArray a=Api.object(history).optJSONArray("messages");if(a!=null)for(int i=a.length()-1;i>=0;i--){JSONObject m=a.optJSONObject(i);if(m!=null&&m.optString("role").equals("assistant")){String t=ChatContent.display(m.opt("content"));if(!t.isEmpty()){response.setText(t);break;}}}});}});}
             });
         });
     }
@@ -442,6 +442,6 @@ public class MainActivity extends Activity {
     private void market(boolean plugin){
         start(plugin?"插件市场":"技能市场");String path="/api/v1/"+(plugin?"plugins":"skills");task(()->Api.unwrap(api.platform("GET",path+"?page=1&pageSize=30",null)),v->{JSONArray a=Api.array(v);for(int i=0;i<a.length();i++){JSONObject item=a.optJSONObject(i);if(item==null)continue;String identifier=id(item);card(item.optString("name",item.optString("skill_code",identifier)),item.optString("description",""),()->task(()->Api.unwrap(api.platform("GET",path+"/"+Uri.encode(identifier),null)),detail->{detail(plugin?"插件详情":"技能详情",detail);}));}note("市场安装及分页仍待适配。");});
     }
-    @Override protected void onSaveInstanceState(Bundle state){super.onSaveInstanceState(state);state.putString("drafts",new JSONObject(drafts).toString());}
+    @Override protected void onSaveInstanceState(Bundle state){super.onSaveInstanceState(state);state.putString("drafts",new JSONObject(drafts).toString());state.putString("attachments",new JSONObject(attachments).toString());}
     @Override protected void onDestroy(){epoch++;handler.removeCallbacksAndMessages(null);if(streaming!=null)streaming.cancel();work.shutdownNow();super.onDestroy();}
 }
