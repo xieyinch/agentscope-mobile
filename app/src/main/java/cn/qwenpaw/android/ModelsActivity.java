@@ -29,6 +29,7 @@ public final class ModelsActivity extends AppCompatActivity {
     private TextView message;
     private ProgressBar progress;
     private AlertDialog editor,discoveryDialog;
+    private final Map<View,Boolean> enabledBeforeRequest=new IdentityHashMap<>();
     private java.util.function.BooleanSupplier dirty=()->false;
     private String activeProvider="",activeModel="";
 
@@ -46,12 +47,12 @@ public final class ModelsActivity extends AppCompatActivity {
     private interface Work {Object run()throws Exception;}
     private void request(Work work,Consumer<Object> done){request(work,done,this::failed);}
     private void request(Work work,Consumer<Object> done,Consumer<Exception> onError){
-        if(busy)return;busy=true;int id=++revision;progress.setVisibility(View.VISIBLE);tell("正在处理…",false);enable(root,false);if(editor!=null)editor.setCancelable(false);
+        if(busy)return;busy=true;int id=++revision;progress.setVisibility(View.VISIBLE);tell("正在处理…",false);enable(root,false);if(editor!=null){editor.setCancelable(false);enable(editor.getWindow().getDecorView(),false);}if(discoveryDialog!=null)enable(discoveryDialog.getWindow().getDecorView(),false);
         io.execute(()->{try{Object result=work.run();runOnUiThread(()->{if(!current()||id!=revision)return;settled();try{done.accept(result);}catch(Exception e){failed(e);}});}catch(Exception e){runOnUiThread(()->{if(!current()||id!=revision)return;settled();onError.accept(e);});}});
     }
     private void settled(){busy=false;enable(root,true);progress.setVisibility(View.GONE);tell("",false);}
     private void failed(Exception e){if(e instanceof ApiClient.ApiException a&&a.status==401){chat.failure(e);finish();return;}String text=e.getMessage()==null?"操作失败，请重试":e.getMessage();tell(text,true);if(editor!=null&&editor.isShowing())Toast.makeText(this,text,Toast.LENGTH_LONG).show();}
-    private void enable(View view,boolean enabled){view.setEnabled(enabled);if(view instanceof ViewGroup g)for(int i=0;i<g.getChildCount();i++)enable(g.getChildAt(i),enabled);}
+    private void enable(View view,boolean enabled){if(enabled){enabledBeforeRequest.forEach(View::setEnabled);enabledBeforeRequest.clear();return;}enabledBeforeRequest.putIfAbsent(view,view.isEnabled());view.setEnabled(false);if(view instanceof ViewGroup g)for(int i=0;i<g.getChildCount();i++)enable(g.getChildAt(i),false);}
     private JSONArray catalog()throws IOException{Object data=api.call("GET","/models",null);if(!(data instanceof JSONArray))throw new IOException("服务器返回的模型列表格式不正确");return (JSONArray)data;}
     private JSONObject active()throws IOException{Object data=api.call("GET","/models/active?scope=effective&agent_id="+ApiClient.enc(api.agent),null);if(!(data instanceof JSONObject))throw new IOException("服务器未返回当前模型配置");return (JSONObject)data;}
     private void applyCatalog(JSONArray data){providers=data;chat.providers=data;loaded=true;}
