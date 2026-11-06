@@ -64,6 +64,15 @@ public class NativeUiTest {
                 java.lang.reflect.Method render=MainActivity.class.getDeclaredMethod("renderAttachments",String.class);render.setAccessible(true);render.invoke(a,"ui-chat");
             }catch(Exception e){throw new AssertionError(e);}});
             screenshot("09-chat-composer");
+            scenario.onActivity(a->{try{
+                java.lang.reflect.Field streaming=MainActivity.class.getDeclaredField("streaming");streaming.setAccessible(true);streaming.set(a,new okhttp3.OkHttpClient().newCall(new okhttp3.Request.Builder().url("https://example.invalid").build()));
+                java.lang.reflect.Field cid=MainActivity.class.getDeclaredField("streamingChat");cid.setAccessible(true);cid.set(a,"ui-chat");
+                java.lang.reflect.Method start=MainActivity.class.getDeclaredMethod("start",String.class);start.setAccessible(true);start.invoke(a,"其他页面");
+                java.lang.reflect.Method output=MainActivity.class.getDeclaredMethod("updateLiveOutput",String.class,String.class);output.setAccessible(true);output.invoke(a,"ui-chat","离开页面期间收到的流式回复");
+                java.lang.reflect.Method conversation=MainActivity.class.getDeclaredMethod("conversation",org.json.JSONObject.class);conversation.setAccessible(true);conversation.invoke(a,Api.obj("id","ui-chat","name","原生对话测试"));
+                assertNotNull(find(screenshotRoot,"离开页面期间收到的流式回复"));assertFalse(find(screenshotRoot,"发送").isEnabled());streaming.set(a,null);
+            }catch(Exception e){throw new AssertionError(e);}});
+
             scenario.onActivity(a->{tap(a,"附件 · 测试文档.pdf  × 移除");assertNull(find(screenshotRoot,"附件 · 测试文档.pdf  × 移除"));try{
                 java.lang.reflect.Method picker=MainActivity.class.getDeclaredMethod("showModelPicker",org.json.JSONArray.class,Object.class,Runnable.class);picker.setAccessible(true);
                 modelDialog=(android.app.AlertDialog)picker.invoke(a,new org.json.JSONArray().put(Api.obj("id","p","name","示例供应商","models",new org.json.JSONArray().put(Api.obj("id","base","name","基础模型")),"extra_models",new org.json.JSONArray().put(Api.obj("id","custom","name","我的模型")))),Api.obj("active_llm",Api.obj("provider_id","p","model","custom")),(Runnable)()->{});
