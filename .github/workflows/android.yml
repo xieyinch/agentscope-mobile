@@ -54,6 +54,10 @@ jobs:
           path: app/build/reports/
           if-no-files-found: ignore
   visual-qa:
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [29, 35]
     needs: build
     runs-on: ubuntu-24.04
     timeout-minutes: 25
@@ -76,19 +80,21 @@ jobs:
           sudo udevadm trigger --name-match=kvm
       - uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 29
+          api-level: ${{ matrix.api }}
           arch: x86_64
-          target: default
+          target: ${{ matrix.api == 35 && 'google_apis' || 'default' }}
           profile: pixel_2
           disable-animations: true
           script: |
+            adb shell settings put secure show_ime_with_hard_keyboard 1
             gradle --no-daemon connectedDebugAndroidTest
             mkdir -p ui-preview
             adb pull /sdcard/Pictures/agentscope-ui-preview/. ui-preview/
+            for file in ui-preview/*.png; do mv "$file" "ui-preview/api${{ matrix.api }}-$(basename "$file")"; done
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: native-ui-preview-${{ github.run_number }}
+          name: native-ui-preview-${{ matrix.api }}-${{ github.run_number }}
           path: |
             ui-preview/
             app/build/reports/androidTests/
@@ -107,7 +113,8 @@ jobs:
           path: dist
       - uses: actions/download-artifact@v4
         with:
-          name: native-ui-preview-${{ github.run_number }}
+          pattern: native-ui-preview-*-${{ github.run_number }}
+          merge-multiple: true
           path: preview
       - name: Include native screen previews
         run: cp preview/ui-preview/*.png dist/
@@ -115,6 +122,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          TAG: native-0.4.0-build-${{ github.run_number }}
+          TAG: native-0.4.1-build-${{ github.run_number }}
           COMMIT_SHA: ${{ github.sha }}
         run: gh release create "$TAG" dist/* --repo "$REPO" --target "$COMMIT_SHA" --title "AgentScope Android $TAG" --prerelease --notes-file RELEASE_NOTES.md

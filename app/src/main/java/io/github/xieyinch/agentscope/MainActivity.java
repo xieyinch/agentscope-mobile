@@ -20,6 +20,7 @@ public class MainActivity extends Activity {
     private int INK,MUTED,ACCENT,BG;
     private Ui ui;
     private ScrollView scroll;
+    private LinearLayout bottomNavigation;
     private View backControl;
     private final Ui.Icon[] tabIcons=new Ui.Icon[5];
     private final TextView[] tabLabels=new TextView[5];
@@ -63,6 +64,7 @@ public class MainActivity extends Activity {
     @Override public void onCreate(Bundle saved) {
         ui=new Ui(this);setTheme(ui.dark?R.style.AppThemeDark:R.style.AppTheme);
         super.onCreate(saved);
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(getWindow(),false);
         INK=ui.ink;MUTED=ui.muted;ACCENT=ui.blue;BG=ui.bg;
         if(Build.VERSION.SDK_INT>=29)getWindow().getDecorView().setForceDarkAllowed(false);
         getWindow().setStatusBarColor(BG);getWindow().setNavigationBarColor(ui.surface);
@@ -72,9 +74,12 @@ public class MainActivity extends Activity {
         api.agent=getPreferences(0).getString("agent","default");
         if(saved!=null){try{JSONObject values=new JSONObject(saved.getString("drafts","{}"));Iterator<String> keys=values.keys();while(keys.hasNext()){String k=keys.next();drafts.put(k,values.getString(k));}JSONObject files=new JSONObject(saved.getString("attachments","{}"));Iterator<String> names=files.keys();while(names.hasNext()){String k=names.next();attachments.put(k,files.getJSONArray(k));}}catch(JSONException ignored){}}
         root=column();root.setBackgroundColor(BG);
-        root.setOnApplyWindowInsetsListener((v,insets)->{
-            if(Build.VERSION.SDK_INT>=30){android.graphics.Insets b=insets.getInsets(WindowInsets.Type.systemBars());v.setPadding(b.left,b.top,b.right,b.bottom);}
-            else v.setPadding(insets.getSystemWindowInsetLeft(),insets.getSystemWindowInsetTop(),insets.getSystemWindowInsetRight(),insets.getSystemWindowInsetBottom());
+        androidx.core.view.ViewCompat.setOnApplyWindowInsetsListener(root,(v,insets)->{
+            androidx.core.graphics.Insets bars=insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.systemBars());
+            androidx.core.graphics.Insets ime=insets.getInsets(androidx.core.view.WindowInsetsCompat.Type.ime());
+            boolean keyboard=insets.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime());
+            v.setPadding(bars.left,bars.top,bars.right,Math.max(bars.bottom,ime.bottom));
+            if(bottomNavigation!=null)bottomNavigation.setVisibility(keyboard?View.GONE:View.VISIBLE);
             return insets;
         });
         LinearLayout bar=row();bar.setPadding(dp(12),dp(4),dp(12),dp(4));
@@ -85,10 +90,10 @@ public class MainActivity extends Activity {
         status=text("",14,ui.red);status.setPadding(dp(16),dp(12),dp(16),dp(12));status.setBackground(Ui.shape(this,ui.surface,12));status.setVisibility(View.GONE);status.setOnClickListener(v->status.setVisibility(View.GONE));status.setContentDescription("操作提示，点击关闭");LinearLayout.LayoutParams sp=new LinearLayout.LayoutParams(-1,-2);sp.setMargins(dp(20),dp(8),dp(20),0);root.addView(status,sp);
         scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setClipToPadding(false);body=column();body.setPadding(dp(20),dp(4),dp(20),dp(28));scroll.addView(body);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
         View divider=new View(this);divider.setBackgroundColor(ui.line);root.addView(divider,new LinearLayout.LayoutParams(-1,dp(1)));
-        LinearLayout nav=row();nav.setBackgroundColor(ui.surface);nav.setPadding(dp(6),dp(5),dp(6),dp(5));String[] names={"总览","对话","管理","社区","我的"},icons={"grid","chat","settings","community","person"};
+        LinearLayout nav=row();bottomNavigation=nav;nav.setBackgroundColor(ui.surface);nav.setPadding(dp(6),dp(5),dp(6),dp(5));String[] names={"总览","对话","管理","社区","我的"},icons={"grid","chat","settings","community","person"};
         for(int i=0;i<names.length;i++){final int index=i;LinearLayout tab=column();tab.setGravity(Gravity.CENTER);tab.setContentDescription(names[i]);tab.setBackground(Ui.ripple(this,ui.surface,14,ACCENT));tab.setClickable(true);tab.setFocusable(true);tab.setOnClickListener(v->guard(()->switchTab(index)));
             tabIcons[i]=new Ui.Icon(this,icons[i],MUTED);tab.addView(tabIcons[i],new LinearLayout.LayoutParams(dp(24),dp(24)));tabLabels[i]=text(names[i],11,MUTED);tabLabels[i].setPadding(0,dp(3),0,0);tabLabels[i].setGravity(Gravity.CENTER);tab.addView(tabLabels[i]);nav.addView(tab,new LinearLayout.LayoutParams(0,dp(54),1));}
-        root.addView(nav);setContentView(root);switchTab(0);
+        root.addView(nav);setContentView(root);androidx.core.view.ViewCompat.requestApplyInsets(root);switchTab(0);
     }
     private Runnable tabRoot(int index){switch(index){case 1:return this::chats;case 2:return this::settings;case 3:return this::community;case 4:return this::account;default:return this::dashboard;}}
     private void switchTab(int index){
@@ -166,9 +171,21 @@ public class MainActivity extends Activity {
             if(!raw.equals("running"))note("实例休眠或停止时，先在运行管理中启动，再连接。");
             section("运行信息");
             card("部署日志","查看启动和运行记录",()->task(()->Api.unwrap(api.platform("GET","/api/v1/app/deploy-logs?appId="+Uri.encode(appId),null)),v->detail("部署日志",v)));
-            card("资源监控","内存、运行状态与资源信息",()->task(()->Api.unwrap(api.platform("GET","/api/v1/app/metrics?appId="+Uri.encode(appId),null)),v->detail("资源监控",v)));
+            card("资源监控","内存、CPU 与采样状态",()->navigate(()->resourceMonitor(appId),true));
             section("管理");card("运行管理","启动、暂停、重启与版本升级",()->navigate(()->deploymentActions(app),true));
         });
+    }
+    private void resourceMonitor(String appId){
+        start("资源监控");note("云端工作空间的 CPU 与内存监控。平台暂未上报采样时，指标会显示“暂无采样”。");
+        Button refresh=primary("刷新监控",()->{});body.addView(refresh);LinearLayout state=column(),metrics=column();body.addView(state);body.addView(metrics);
+        Runnable load=()->{refresh.setEnabled(false);refresh.setText("正在刷新…");task(()->{try{return Api.unwrap(api.platform("GET","/api/v1/app/metrics?appId="+Uri.encode(appId),null));}finally{handler.post(()->{refresh.setEnabled(true);refresh.setText("刷新监控");});}},value->{renderMetrics(metrics,Api.object(value));});};refresh.setOnClickListener(v->load.run());load.run();
+        task(()->Api.unwrap(api.platform("GET","/api/v1/app/get?appId="+Uri.encode(appId),null)),value->{String raw=Api.object(value).optString("status","unknown");String label=raw.equals("running")?"运行中":raw.equals("sleeping")?"已休眠":raw.equals("stopped")?"已停止":raw.equals("starting")?"启动中":"暂未确认";TextView status=text("实例状态 · "+label,16,raw.equals("running")?ui.green:MUTED);state.addView(status);});
+    }
+    private void renderMetrics(LinearLayout container,JSONObject metrics){
+        container.removeAllViews();TextView updated=text("刷新时间 · "+new java.text.SimpleDateFormat("HH:mm:ss",java.util.Locale.getDefault()).format(new Date()),13,MUTED);container.addView(updated);
+        boolean available=ResourceMetrics.hasSamples(metrics);String message=CommunityContent.first(metrics,"message");
+        TextView sampling=text(available?"平台资源采样":(message.isEmpty()?"平台暂未返回资源采样，暂时无法计算 CPU 和内存使用情况。可稍后刷新；这不表示资源使用量为零。":message),15,available?INK:MUTED);sampling.setPadding(dp(2),dp(10),dp(2),dp(14));container.addView(sampling);
+        for(String[] metric:ResourceMetrics.FIELDS){LinearLayout card=column();card.setPadding(dp(18),dp(14),dp(18),dp(14));card.setBackground(Ui.shape(this,ui.surface,16));card.addView(text(metric[1],14,MUTED));TextView value=text(ResourceMetrics.format(metrics,metric[0],metric[2]),25,INK);value.setTypeface(null,Typeface.BOLD);card.addView(value);LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(-1,-2);params.bottomMargin=dp(10);container.addView(card,params);}
     }
     private void deploymentActions(JSONObject app){
         start("运行管理");String appId=app.optString("appId",id(app));note("这些操作仅作用于当前工作空间。");
@@ -342,7 +359,7 @@ public class MainActivity extends Activity {
         chatComposer=column();chatComposer.setPadding(dp(16),dp(4),dp(16),dp(6));chatComposer.setBackgroundColor(ui.surface);root.addView(chatComposer,root.indexOfChild(scroll)+1,new LinearLayout.LayoutParams(-1,-2));modelControl(chatComposer);
         LinearLayout historyMessages=column();body.addView(historyMessages);LinearLayout messages=column();body.addView(messages);
         if(streaming!=null&&streamingChat.equals(cid)){liveResponse=text(liveOutputs.getOrDefault(cid,"Agent 正在处理…"),16,INK);liveResponse.setTextIsSelectable(true);messages.addView(liveResponse);}
-        EditText compose=input("发消息，让 Agent 帮你完成任务",drafts.getOrDefault(cid,""),false);compose.addTextChangedListener(new android.text.TextWatcher(){public void beforeTextChanged(CharSequence t,int st,int count,int after){}public void onTextChanged(CharSequence t,int st,int before,int count){drafts.put(cid,t.toString());}public void afterTextChanged(android.text.Editable e){}});activeCompose=compose;compose.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_MULTI_LINE);compose.setMinLines(1);compose.setMaxLines(4);chatComposer.addView(compose);
+        EditText compose=input("发消息，让 Agent 帮你完成任务",drafts.getOrDefault(cid,""),false);compose.addTextChangedListener(new android.text.TextWatcher(){public void beforeTextChanged(CharSequence t,int st,int count,int after){}public void onTextChanged(CharSequence t,int st,int before,int count){drafts.put(cid,t.toString());}public void afterTextChanged(android.text.Editable e){}});activeCompose=compose;compose.setBackground(Ui.shape(this,ui.secondary,14));compose.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_FLAG_MULTI_LINE);compose.setMinLines(1);compose.setMaxLines(4);chatComposer.addView(compose);
         attachmentList=row();HorizontalScrollView attachmentScroll=new HorizontalScrollView(this);attachmentScroll.setHorizontalScrollBarEnabled(false);attachmentScroll.addView(attachmentList);chatComposer.addView(attachmentScroll);renderAttachments(cid);
         LinearLayout composeActions=row();chatComposer.addView(composeActions);
         composeActions.addView(button("添加图片 / 文件",()->{if(attachmentUploading){info("附件正在上传，请稍候");return;}if(pendingAttachments(cid).length()>=8){info("每条消息最多添加 8 个附件");return;}attachmentChat=cid;pickerEpoch=epoch;startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("*/*").addCategory(Intent.CATEGORY_OPENABLE),203);}));

@@ -67,6 +67,15 @@ public class NativeUiTest {
             scenario.onActivity(a->screenshotRoot.postOnAnimation(new Runnable(){@Override public void run(){if(find(screenshotRoot,"可以，添加附件后点击发送。这里是原生界面测试数据。")!=null)historyReady.countDown();else screenshotRoot.postOnAnimation(this);}}));
             assertTrue("Chat history did not render",historyReady.await(5,java.util.concurrent.TimeUnit.SECONDS));
             screenshot("09-chat-composer");
+            java.util.concurrent.CountDownLatch keyboardReady=new java.util.concurrent.CountDownLatch(1);
+            scenario.onActivity(a->{try{java.lang.reflect.Field compose=MainActivity.class.getDeclaredField("activeCompose");compose.setAccessible(true);EditText editor=(EditText)compose.get(a);editor.requestFocus();editor.setText("Keyboard visibility regression");((android.view.inputmethod.InputMethodManager)a.getSystemService(android.content.Context.INPUT_METHOD_SERVICE)).showSoftInput(editor,android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);
+                screenshotRoot.postOnAnimation(new Runnable(){@Override public void run(){androidx.core.view.WindowInsetsCompat insets=androidx.core.view.ViewCompat.getRootWindowInsets(screenshotRoot);if(insets!=null&&insets.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime()))keyboardReady.countDown();else screenshotRoot.postOnAnimation(this);}});
+            }catch(Exception e){throw new AssertionError(e);}});
+            assertTrue("Keyboard did not open",keyboardReady.await(6,java.util.concurrent.TimeUnit.SECONDS));
+            scenario.onActivity(a->{try{java.lang.reflect.Field compose=MainActivity.class.getDeclaredField("activeCompose");compose.setAccessible(true);View editor=(View)compose.get(a);android.graphics.Rect frame=new android.graphics.Rect();screenshotRoot.getWindowVisibleDisplayFrame(frame);int[] position=new int[2];editor.getLocationOnScreen(position);assertTrue("Input is covered by keyboard",position[1]+editor.getHeight()<=frame.bottom);View send=find(screenshotRoot,"发送");send.getLocationOnScreen(position);assertTrue("Send is covered by keyboard",position[1]+send.getHeight()<=frame.bottom);}catch(Exception e){throw new AssertionError(e);}});
+            screenshot("11-chat-keyboard");
+            scenario.onActivity(a->((android.view.inputmethod.InputMethodManager)a.getSystemService(android.content.Context.INPUT_METHOD_SERVICE)).hideSoftInputFromWindow(screenshotRoot.getWindowToken(),0));
+
             scenario.onActivity(a->{try{
                 java.lang.reflect.Field streaming=MainActivity.class.getDeclaredField("streaming");streaming.setAccessible(true);streaming.set(a,new okhttp3.OkHttpClient().newCall(new okhttp3.Request.Builder().url("https://example.invalid").build()));
                 java.lang.reflect.Field cid=MainActivity.class.getDeclaredField("streamingChat");cid.setAccessible(true);cid.set(a,"ui-chat");
@@ -86,6 +95,14 @@ public class NativeUiTest {
             // The picker is a separate native dialog window.
             InstrumentationRegistry.getInstrumentation().runOnMainSync(()->{});
             scenario.onActivity(a->{modelDialog.dismiss();new SecretStore(a).clear();});
+        }
+    }
+    @Test public void rendersUnavailableAndMeasuredResourceSnapshots() throws Exception {
+        try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)){
+            scenario.onActivity(a->{try{screenshotRoot=a.getWindow().getDecorView();java.lang.reflect.Method start=MainActivity.class.getDeclaredMethod("start",String.class);start.setAccessible(true);start.invoke(a,"资源监控测试");java.lang.reflect.Field body=MainActivity.class.getDeclaredField("body");body.setAccessible(true);java.lang.reflect.Method render=MainActivity.class.getDeclaredMethod("renderMetrics",LinearLayout.class,org.json.JSONObject.class);render.setAccessible(true);render.invoke(a,(LinearLayout)body.get(a),Api.obj("memoryUsageMbMax",org.json.JSONObject.NULL,"vcpuCoresAvg",org.json.JSONObject.NULL));assertNotNull(find(screenshotRoot,"暂无采样"));assertNull(find(screenshotRoot,"memoryUsageMbMax"));}catch(Exception e){throw new AssertionError(e);}});
+            screenshot("12-resources-unavailable");
+            scenario.onActivity(a->{try{java.lang.reflect.Field body=MainActivity.class.getDeclaredField("body");body.setAccessible(true);java.lang.reflect.Method render=MainActivity.class.getDeclaredMethod("renderMetrics",LinearLayout.class,org.json.JSONObject.class);render.setAccessible(true);render.invoke(a,(LinearLayout)body.get(a),Api.obj("memoryUsageMbMax",256,"memoryUsageMbAvg",128.5,"vcpuCoresMax",0.5,"vcpuCoresAvg",0,"vcpuUtilizationMax",25,"memoryUtilizationMax",12.5));assertNotNull(find(screenshotRoot,ResourceMetrics.format(Api.obj("memoryUsageMbMax",256),"memoryUsageMbMax","MB")));}catch(Exception e){throw new AssertionError(e);}});
+            screenshot("13-resources-sample");
         }
     }
     @Test public void preservesPerTabNavigationAndCapturesNativeScreens() throws Exception {
