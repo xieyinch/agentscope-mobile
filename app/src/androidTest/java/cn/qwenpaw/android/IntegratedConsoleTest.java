@@ -70,13 +70,21 @@ public class IntegratedConsoleTest {
             screenshot("15-integrated-messages");
             scene.onActivity(a->{controller.draft="保留未发送草稿";controller.saveDraft();});scene.recreate();
             scene.onActivity(a->assertEquals("保留未发送草稿",controller.draft));
-            try(ActivityScenario<SettingsActivity> settings=ActivityScenario.launch(new Intent(InstrumentationRegistry.getInstrumentation().getTargetContext(),SettingsActivity.class).putExtra("page",0))){screenshot("16-integrated-settings");}
-            scene.onActivity(a->androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES));
-            await(()->Ui.BG==0xff000000);
-            scene.onActivity(a->{assertEquals(0xff0a84ff,MainActivity.ACCENT);assertEquals(0xfff2f2f7,MainActivity.INK);});
-            screenshot("18-integrated-dark");
-            scene.onActivity(a->androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_NO));
+            AtomicReference<MainActivity> parent=new AtomicReference<>();scene.onActivity(parent::set);
+            android.app.Instrumentation.ActivityMonitor monitor=InstrumentationRegistry.getInstrumentation().addMonitor(SettingsActivity.class.getName(),null,false);
+            scene.onActivity(a->a.startActivity(new Intent(a,SettingsActivity.class).putExtra("page",0)));
+            android.app.Activity settings=monitor.waitForActivityWithTimeout(5000);assertNotNull("Settings page did not open",settings);InstrumentationRegistry.getInstrumentation().removeMonitor(monitor);
+            java.lang.reflect.Field config=SettingsActivity.class.getDeclaredField("config");config.setAccessible(true);
+            await(()->{try{return config.get(settings)!=null;}catch(IllegalAccessException error){throw new AssertionError(error);}});
+            screenshot("16-integrated-settings");
+            InstrumentationRegistry.getInstrumentation().runOnMainSync(settings::finish);
+            await(()->androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(androidx.test.runner.lifecycle.Stage.RESUMED).contains(parent.get()));
 
+        }
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(()->androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES));
+        try(ActivityScenario<MainActivity> dark=ActivityScenario.launch(MainActivity.class)){
+            dark.onActivity(a->{assertEquals(0xff000000,Ui.BG);assertEquals(0xff0a84ff,MainActivity.ACCENT);assertEquals(0xfff2f2f7,MainActivity.INK);});
+            screenshot("18-integrated-dark");
         }
     }
 }

@@ -203,7 +203,7 @@ public class MainActivity extends Activity {
     private void login(){
         start("欢迎回来");note("登录你的 AgentScope 账户，继续管理工作空间。");
         EditText email=input("邮箱",api.secrets.get("email"),false),password=input("密码","",true);email.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);body.addView(email);body.addView(password);
-        Button submit=primary("登录",()->{});submit.setOnClickListener(view->{String a=email.getText().toString().trim(),p=password.getText().toString();if(a.isEmpty()||p.isEmpty()){info("请输入邮箱和密码");return;}submit.setEnabled(false);task(()->{try{api.login(a,p);return null;}finally{handler.post(()->submit.setEnabled(true));}},v->{password.setText("");history.clear();navigate(this::dashboard,false);});});body.addView(submit);
+        Button submit=primary("登录",()->{});submit.setOnClickListener(view->{String a=email.getText().toString().trim(),p=password.getText().toString();if(a.isEmpty()||p.isEmpty()){info("请输入邮箱和密码");return;}submit.setEnabled(false);task(()->{try{api.login(a,p);return null;}finally{handler.post(()->submit.setEnabled(true));}},v->{ConsoleBridge.disconnect(this);drafts.clear();attachments.clear();activeModels.clear();password.setText("");history.clear();navigate(this::dashboard,false);});});body.addView(submit);
         note("暂支持邮箱密码登录。密码不会保存在设备上。");
     }
     private void connection(){
@@ -270,7 +270,7 @@ public class MainActivity extends Activity {
     private void resourceDetail(String title,String path,String kind,String key,JSONObject o){
         start(name(o));String encoded=Uri.encode(key);
         if(kind.equals("agents")){
-            body.addView(button("切换至此智能体",()->{if(streaming!=null||attachmentUploading){info("请等待当前任务或附件上传完成，再切换智能体");return;}api.agent=key;getPreferences(0).edit().putString("agent",key).apply();for(Deque<Runnable> stack:savedHistories)stack.clear();Arrays.fill(savedScreens,null);Arrays.fill(tabScroll,0);screen=null;switchTab(0);}));
+            body.addView(button("切换至此智能体",()->{if(streaming!=null||attachmentUploading||ConsoleBridge.busy(this)){info("请等待当前任务或附件上传完成，再切换智能体");return;}api.agent=key;ConsoleBridge.selectAgent(this,api.base(),key);getPreferences(0).edit().putString("agent",key).apply();for(Deque<Runnable> stack:savedHistories)stack.clear();Arrays.fill(savedScreens,null);Arrays.fill(tabScroll,0);screen=null;switchTab(0);}));
             body.addView(button(o.optBoolean("enabled",true)?"停用智能体":"启用智能体",()->change("切换此智能体运行状态？",()->api.instance("PATCH","/agents/"+encoded+"/toggle",Api.obj("enabled",!o.optBoolean("enabled",true))),()->resources(title,path,kind))));
             task(()->api.instance("GET",path+"/"+encoded,null),v->editConfig(title,path+"/"+encoded,Api.object(v),"PUT",true));
         }else if(kind.equals("tools")){
@@ -491,7 +491,7 @@ public class MainActivity extends Activity {
     private void market(boolean plugin){
         start(plugin?"插件市场":"技能市场");String path="/api/v1/"+(plugin?"plugins":"skills");task(()->Api.unwrap(api.platform("GET",path+"?page=1&pageSize=30",null)),v->{JSONArray a=Api.array(v);for(int i=0;i<a.length();i++){JSONObject item=a.optJSONObject(i);if(item==null)continue;String identifier=id(item);card(item.optString("name",item.optString("skill_code",identifier)),item.optString("description",""),()->task(()->Api.unwrap(api.platform("GET",path+"/"+Uri.encode(identifier),null)),detail->{detail(plugin?"插件详情":"技能详情",detail);}));}note("市场安装及分页仍待适配。");});
     }
-    @Override protected void onResume(){super.onResume();if(api!=null&&getApplication() instanceof cn.qwenpaw.android.PawApplication app&&app.chat!=null&&app.chat.loggedIn&&app.chat.base.equals(api.base())){api.agent=app.chat.agent;getPreferences(0).edit().putString("agent",api.agent).apply();}}
+    @Override protected void onResume(){super.onResume();if(api!=null&&getApplication() instanceof cn.qwenpaw.android.PawApplication app&&app.chat!=null&&app.chat.loggedIn&&app.chat.base.equals(api.base())){boolean changed=!api.agent.equals(app.chat.agent);api.agent=app.chat.agent;getPreferences(0).edit().putString("agent",api.agent).apply();if(changed&&root!=null){for(int i=0;i<3;i++){savedHistories.get(i).clear();savedScreens[i]=null;}screen=null;switchTab(2);Toast.makeText(this,"智能体已切换，管理页面已重新加载",Toast.LENGTH_SHORT).show();}}}
     @Override protected void onSaveInstanceState(Bundle state){super.onSaveInstanceState(state);state.putString("drafts",new JSONObject(drafts).toString());state.putString("attachments",new JSONObject(attachments).toString());}
     @Override protected void onDestroy(){epoch++;handler.removeCallbacksAndMessages(null);if(streaming!=null)streaming.cancel();work.shutdownNow();super.onDestroy();}
 }

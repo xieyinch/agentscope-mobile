@@ -36,9 +36,11 @@ public final class ConsoleBridge {
             ApiClient.useTransport(transport);Intent intent=new Intent(activity,page);if(section>=0)intent.putExtra("page",section);if(page==cn.qwenpaw.android.SkillsActivity.class&&section==1)intent.putExtra("pool",true);activity.startActivity(intent);
         }catch(Exception error){Toast.makeText(activity,"控制台暂时无法打开："+error.getMessage(),Toast.LENGTH_LONG).show();}
     }
+    public static boolean busy(Context context){PawApplication app=(PawApplication)context.getApplicationContext();return app.chat!=null&&(app.chat.running||app.chat.busy||app.chat.uploads>0);}
+    public static void selectAgent(Context context,String base,String agent){PawApplication app=(PawApplication)context.getApplicationContext();if(app.chat!=null&&app.chat.loggedIn&&app.chat.base.equals(base)&&!app.chat.agent.equals(agent))app.chat.selectAgent(agent,true);}
     public static void disconnect(Context context){
         PawApplication app=(PawApplication)context.getApplicationContext();Runnable clear=()->{if(app.chat!=null)app.chat.closeManaged();app.chat=null;};if(android.os.Looper.myLooper()==android.os.Looper.getMainLooper())clear.run();else new android.os.Handler(android.os.Looper.getMainLooper()).post(clear);
         synchronized(ConsoleBridge.class){for(java.lang.ref.WeakReference<OkHttpClient> ref:clients){OkHttpClient client=ref.get();if(client!=null){client.dispatcher().cancelAll();client.connectionPool().evictAll();}}for(java.lang.ref.WeakReference<Api> ref:sessions){Api session=ref.get();if(session!=null)session.clearMemorySession();}sessions.clear();clients.clear();}
-        ApiClient.useTransport(new OkHttpClient.Builder().followRedirects(false).followSslRedirects(false).build());
+        ApiClient.useTransport(new OkHttpClient.Builder().connectTimeout(20,TimeUnit.SECONDS).readTimeout(90,TimeUnit.SECONDS).writeTimeout(90,TimeUnit.SECONDS).followRedirects(false).followSslRedirects(false).build());
     }
 }

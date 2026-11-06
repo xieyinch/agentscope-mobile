@@ -92,7 +92,7 @@ public final class ChatController {
         saveDraft();invalidate();resetWorkspace();load(account);saveAccounts();status="已连接平台工作空间";
     }
     public void closeManaged(){forgetManaged();io.shutdownNow();main.removeCallbacksAndMessages(null);}
-    public void forgetManaged(){logout();JSONArray keep=new JSONArray();for(int i=0;i<accounts.length();i++){JSONObject account=accounts.optJSONObject(i);if(account==null)continue;if(account.optBoolean("managed")){vault.forget(account.optString("id"));}else keep.put(account);}accounts=keep;saveAccounts();}
+    public void forgetManaged(){logout();JSONArray keep=new JSONArray();for(int i=0;i<accounts.length();i++){JSONObject account=accounts.optJSONObject(i);if(account==null)continue;if(account.optBoolean("managed")){String id=account.optString("id");vault.forget(id);forgetSettings(id);}else keep.put(account);}accounts=keep;saveAccounts();}
     public ApiClient api() {return new ApiClient(base,token,agent);}
     public long scope() {return generation;}
     /** Single-account installs kept one connection in flat keys; move it into the first saved account. */
