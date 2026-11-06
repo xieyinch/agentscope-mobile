@@ -151,7 +151,7 @@ public class MainActivity extends Activity {
         start("Agent 控制台");
         card(api.connected()?"已连接 Agent 实例":"连接你的 Agent",api.connected()?"当前智能体："+api.agent:"让任务与工作空间触手可及",()->navigate(this::connection,true));
         if(api.connected()){
-            card("开始对话","历史记录、流式回复、停止任务",()->navigate(this::chats,true));
+            card("开始对话","历史记录、流式回复、停止任务",()->ConsoleBridge.open(this));
             card("智能体管理","选择、创建、启停与配置 Agent",()->navigate(()->resources("智能体","/agents","agents"),true));
             card("工作区文件","浏览、编辑、上传与下载",()->navigate(()->files(""),true));
             card("终端","远程命令与输出",()->navigate(this::terminals,true));
@@ -224,17 +224,18 @@ public class MainActivity extends Activity {
         section("AgentScope 随行 · "+BuildConfig.VERSION_NAME);note("为 AgentScope 打造的独立安卓客户端。部分高级能力仍在完善中。");
     }
 
+    private String moduleGroup(String[] module){return switch(module[2]){case "cron"->"自动化";case "skills","tools","mcp","pool","plugins"->"能力与扩展";case "models"->"模型服务";case "env","backups"->"数据与环境";default->module[0].contains("安全")||module[0].equals("文件保护")?"安全策略":"工作空间设置";};}
     private void settings(){
         start("Agent 配置");if(!requireInstance())return;
         card("完整控制台","对话、工作区、模型、思考强度、审批、命令和上下文",()->ConsoleBridge.open(this));
         card("当前智能体",api.agent,()->navigate(()->resources("智能体","/agents","agents"),true));
         String[][] modules={{"运行配置","/workspace/running-config","config"},{"定时任务","/cron/jobs","cron"},{"频道","/config/channels","config"},{"心跳","/config/heartbeat","config"},{"技能","/skills","skills"},{"工具","/tools","tools"},{"MCP 服务","/mcp","mcp"},{"ACP","/config/acp","config"},{"模型供应商","/models","models"},{"扩展插件","/plugins","plugins"},{"技能池","/skills/pool","pool"},{"环境变量","/envs","env"},{"工具安全","/config/security/tool-guard","config"},{"沙箱安全","/config/security/sandbox","config"},{"文件保护","/config/security/file-guard","config"},{"备份","/backups","backups"}};
-        for(String[] m:modules)card(m[0],"查看与管理",()->{
+        java.util.List<String> groupOrder=Arrays.asList("工作空间设置","模型服务","能力与扩展","自动化","安全策略","数据与环境");Arrays.sort(modules,Comparator.comparingInt(module->groupOrder.indexOf(moduleGroup(module))));String group="";for(String[] m:modules){String nextGroup=moduleGroup(m);if(!nextGroup.equals(group)){section(nextGroup);group=nextGroup;}card(m[0],"查看与管理",()->{
             if(m[2].equals("skills")||m[2].equals("pool")){ConsoleBridge.open(this,cn.qwenpaw.android.SkillsActivity.class,m[2].equals("pool")?1:-1);return;}
             if(m[2].equals("tools")){ConsoleBridge.open(this,cn.qwenpaw.android.ToolsActivity.class,-1);return;}
             if(m[0].equals("运行配置")||m[2].equals("env")){ConsoleBridge.open(this,cn.qwenpaw.android.SettingsActivity.class,m[2].equals("env")?1:0);return;}
             navigate(()->resources(m[0],m[1],m[2]),true);
-        });
+        });}
         card("Token 消耗","用量趋势、模型分类与日期筛选",()->ConsoleBridge.open(this,cn.qwenpaw.android.SettingsActivity.class,2));
         card("运行诊断","服务版本、就绪状态与后端日志",()->navigate(this::runtimeDiagnostics,true));
     }
@@ -247,8 +248,9 @@ public class MainActivity extends Activity {
             JSONArray list=Api.array(v);
             if(list.length()==0)note("暂无条目，或服务端返回的版本结构暂不支持。");
             if(kind.equals("agents"))body.addView(button("创建智能体",()->newForm("创建智能体",path,Api.obj("id","","name","","description",""))));
-            if(kind.equals("mcp"))body.addView(button("添加 MCP 服务",()->newForm("添加 MCP",path,Api.obj("name","","description","","enabled",true,"transport","streamable_http","url","","headers",new JSONObject(),"command","","args",new JSONArray(),"env",new JSONObject(),"cwd",""))));
+            if(kind.equals("mcp"))body.addView(button("添加 MCP 服务",()->newForm("添加 MCP",path,Api.obj("client_key","","client",ControlSchemas.mcp(new JSONObject())))));
             if(kind.equals("cron"))body.addView(button("创建定时任务",this::createCron));
+            if(kind.equals("backups"))body.addView(primary("创建备份",()->navigate(this::createBackup,true)));
             if(kind.equals("env"))body.addView(button("添加环境变量",this::addEnvironment));
             if(kind.equals("models")){body.addView(primary("切换当前对话模型",()->chooseModel(()->resources(title,path,kind))));note("当前智能体："+api.agent+"。进入供应商可查看和选择全部已添加的对话模型。");}
             if(kind.equals("models"))body.addView(button("添加供应商",()->newForm("添加供应商","/models/custom-providers",Api.obj("id","","name","","default_base_url","","api_key",""))));
@@ -256,9 +258,13 @@ public class MainActivity extends Activity {
                 card(name(o),sub,()->navigate(()->resourceDetail(title,path,kind,key,o),true));}
         });
     }
+    private void mcpTools(String key){start("MCP 工具白名单");String path="/mcp/tools/"+Uri.encode(key);task(()->api.instance("GET",path,null),value->{JSONArray tools=Api.array(value);java.util.List<CheckBox> boxes=new ArrayList<>();for(int i=0;i<tools.length();i++){JSONObject tool=tools.optJSONObject(i);if(tool==null)continue;CheckBox box=new CheckBox(this);box.setText(tool.optString("name")+"\n"+tool.optString("description",""));box.setTextColor(INK);box.setChecked(tool.optBoolean("enabled",true));box.setTag(tool.optString("name"));boxes.add(box);body.addView(box);}if(boxes.isEmpty()){note("此服务暂未返回工具，请确认服务已连接后刷新。");body.addView(button("重新读取工具",()->mcpTools(key)));return;}body.addView(primary("保存所选工具",()->{JSONArray selected=new JSONArray();for(CheckBox box:boxes)if(box.isChecked())selected.put(box.getTag());change("仅允许以上选中的 MCP 工具？",()->api.instance("PUT",path,Api.obj("tools",selected)),this::back);}));body.addView(button("允许全部工具",()->change("允许此 MCP 服务的全部工具？",()->api.instance("PUT",path,Api.obj("tools",JSONObject.NULL)),this::back)));});}
+    private void createBackup(){start("创建备份");note("默认只备份当前智能体，不包含密钥。可按需要修改范围。");NativeForm form=new NativeForm(this,Api.obj("name","备份 "+java.time.LocalDate.now(),"description","","scope",Api.obj("include_agents",true,"include_global_config",false,"include_secrets",false,"include_skill_pool",false),"agents",new JSONArray().put(api.agent)),true);body.addView(form.layout);body.addView(primary("开始备份",()->{try{JSONObject payload=form.read();if(payload.optString("name").trim().isEmpty()){info("请填写备份名称");return;}change("按以上范围创建服务器备份？",()->api.instance("POST","/backups/jobs",payload),()->task(()->api.instance("GET","/backups/jobs/active",null),job->{String id=Api.object(job).optString("job_id");if(id.isEmpty())resources("备份","/backups","backups");else navigate(()->backupProgress(id),true);}));}catch(Exception error){failure(error);}}));}
+    private void backupProgress(String id){start("备份进度");int visit=epoch;ProgressBar progress=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);progress.setMax(100);body.addView(progress);TextView state=text("正在查询备份状态…",16,INK);body.addView(state);body.addView(button("返回备份列表",()->navigate(()->resources("备份","/backups","backups"),false)));pollBackup(id,visit,progress,state);}
+    private void pollBackup(String id,int visit,ProgressBar progress,TextView state){if(epoch!=visit)return;task(()->api.instance("GET","/backups/jobs/"+Uri.encode(id),null),value->{JSONObject job=Api.object(value);String status=job.optString("status","unknown");progress.setProgress(job.optInt("percent",0));String label=switch(status){case "pending"->"等待开始";case "running"->"正在备份";case "completed"->"备份完成";case "failed"->"备份失败";case "cancelled"->"已取消";default->status;};state.setText(label+" · "+job.optInt("percent",0)+"%\n"+CommunityContent.first(job,"current_agent","error"));if(status.equals("pending")||status.equals("running")||status.equals("cancel_requested"))handler.postDelayed(()->pollBackup(id,visit,progress,state),1500);});}
     private void editConfig(String title,String path,JSONObject config,String method,boolean returnAfter){
         NativeForm form=new NativeForm(this,config,true);body.addView(form.layout);String original=config.toString();dirty=()->{try{return !form.read().toString().equals(original);}catch(Exception ignored){return true;}};
-        body.addView(button("保存配置",()->{try{JSONObject data=form.read();change("保存“"+title+"”配置？",()->api.instance(method,path,data),()->{if(returnAfter)back();else resources(title,path,"config");});}catch(Exception e){failure(e);}}));
+        body.addView(button("保存配置",()->{try{JSONObject data=form.read();if(path.equals("/mcp")&&method.equals("POST"))ControlSchemas.validateMcpCreate(data);change("保存“"+title+"”配置？",()->api.instance(method,path,data),()->{if(returnAfter)back();else resources(title,path,"config");});}catch(Exception e){failure(e);}}));
     }
     private void newForm(String title,String path,JSONObject initial){navigate(()->{start(title);editConfig(title,path,initial,"POST",true);},true);}
     private void resourceDetail(String title,String path,String kind,String key,JSONObject o){
@@ -276,11 +282,18 @@ public class MainActivity extends Activity {
         }else if(kind.equals("mcp")){
             body.addView(button("切换启用状态",()->change("切换 MCP 服务状态？",()->api.instance("PATCH","/mcp/toggle/"+encoded,null),()->resources(title,path,kind))));
             body.addView(button("可用工具",()->navigate(()->readList("MCP 工具","/mcp/tools/"+encoded),true)));
-            task(()->api.instance("GET",path+"/"+encoded,null),v->editConfig(title,path+"/"+encoded,Api.object(v),"PUT",true));
+            task(()->api.instance("GET",path+"/"+encoded,null),v->editConfig(title,path+"/"+encoded,ControlSchemas.mcp(Api.object(v)),"PUT",true));
+            body.addView(button("工具白名单",()->navigate(()->mcpTools(key),true)));
+            body.addView(button("访问策略",()->navigate(()->resources("MCP 访问策略","/mcp/policy/"+encoded,"config"),true)));
         }else if(kind.equals("cron")){
             for(String[] a:new String[][]{{"立即执行","run"},{"暂停","pause"},{"恢复","resume"}})body.addView(button(a[0],()->change(a[0]+"此定时任务？",()->api.instance("POST",path+"/"+encoded+"/"+a[1],null),()->resources(title,path,kind))));
             body.addView(button("执行历史",()->navigate(()->readList("执行历史",path+"/"+encoded+"/history"),true)));
             JSONObject spec=Api.object(copy(o));spec.remove("state");spec.remove("next_run_time");spec.remove("last_run_time");editConfig(title,path+"/"+encoded,spec,"PUT",true);
+        }else if(kind.equals("backups")){
+            body.addView(new NativeForm(this,o,false).layout);
+            body.addView(button("查看备份内容",()->task(()->api.instance("GET",path+"/"+encoded,null),value->detail("备份内容",value))));
+            body.addView(button("恢复此备份",()->task(()->api.instance("GET",path+"/"+encoded,null),value->navigate(()->{start("恢复备份");note("恢复可能覆盖所选智能体的文件和配置。请先备份当前状态；默认不恢复密钥和全局配置。");JSONObject stats=Api.object(value).optJSONObject("workspace_stats");JSONArray agents=new JSONArray();if(stats!=null){Iterator<String> ids=stats.keys();while(ids.hasNext())agents.put(ids.next());}NativeForm form=new NativeForm(this,ControlSchemas.restore(agents),true);body.addView(form.layout);body.addView(button("确认恢复",()->{try{JSONObject payload=form.read();change("恢复所选数据？现有文件与配置可能被覆盖。",()->api.instance("POST",path+"/"+encoded+"/restore",payload),()->resources(title,path,kind));}catch(Exception error){failure(error);}}));},true))));
+            body.addView(button("删除备份",()->change("删除备份“"+name(o)+"”？删除后不可恢复。",()->api.instance("POST","/backups/delete",Api.obj("ids",new JSONArray().put(key))),()->resources(title,path,kind))));
         }else if(kind.equals("models"))modelDetail(o);
         else if(kind.equals("env")){
             EditText value=input("新的值","",true);body.addView(value);body.addView(button("保存此变量",()->change("更新环境变量 "+key+"？",()->api.instance("PATCH","/envs",Api.obj(key,value.getText().toString())),()->resources(title,path,kind))));
@@ -385,8 +398,12 @@ public class MainActivity extends Activity {
     private void files(String path){
         start("工作区文件");filePath=path;if(!requireInstance())return;note(path.isEmpty()?"Agent 工作区根目录":path);
         body.addView(button("上传文件",()->{pickerEpoch=epoch;Intent intent=new Intent(Intent.ACTION_OPEN_DOCUMENT).setType("*/*").addCategory(Intent.CATEGORY_OPENABLE);startActivityForResult(intent,201);}));
-        task(()->api.instance("GET","/workspace/tree?root=workspace&path="+Uri.encode(path)+"&limit=200",null),v->{JSONArray items=Api.array(v);for(int i=0;i<items.length();i++){JSONObject f=items.optJSONObject(i);if(f==null)continue;boolean directory=f.optString("kind").equals("directory");String p=f.optString("path",path+"/"+f.optString("name"));card((directory?"目录 · ":"")+name(f),directory?"打开目录":f.optLong("size",0)+" B",()->navigate(()->{if(directory)files(p);else file(p);},true));}if(Api.object(v).optBoolean("has_more"))note("当前展示前 200 项；目录分页仍待适配。");});
+        loadFiles(path,"");
     }
+    private void loadFiles(String path,String cursor){
+        Button more=button(cursor.isEmpty()?"读取目录":"加载更多文件",()->{});body.addView(more);Runnable load=()->{more.setEnabled(false);more.setText("正在读取…");task(()->{try{return api.instance("GET","/workspace/tree?root=workspace&path="+Uri.encode(path)+"&limit=200"+(cursor.isEmpty()?"":"&cursor="+Uri.encode(cursor)),null);}finally{handler.post(()->{more.setEnabled(true);more.setText("重新读取 / 加载更多");});}},value->{body.removeView(more);JSONArray items=Api.array(value);for(int i=0;i<items.length();i++){JSONObject item=items.optJSONObject(i);if(item==null)continue;boolean directory=item.optString("kind").equals("directory");String target=item.optString("path",path+"/"+item.optString("name"));card((directory?"目录 · ":"")+name(item),directory?"打开目录":item.optLong("size",0)+" B",()->navigate(()->{if(directory)files(target);else file(target);},true));}JSONObject page=Api.object(value);String next=CommunityContent.first(page,"next_cursor");if(page.optBoolean("has_more")&&!next.isEmpty()&&!next.equals(cursor))loadFiles(path,next);else if(items.length()==0&&cursor.isEmpty())note("目录为空，可使用上传按钮添加文件。");});};more.setOnClickListener(v->load.run());if(cursor.isEmpty())load.run();
+    }
+
     private void file(String path){
         start(path.substring(path.lastIndexOf('/')+1));note(path);String encoded=Uri.encode(path);
         body.addView(button("下载文件",()->{downloadPath=path;downloadName=path.substring(path.lastIndexOf('/')+1);pickerEpoch=epoch;startActivityForResult(new Intent(Intent.ACTION_CREATE_DOCUMENT).setType("application/octet-stream").putExtra(Intent.EXTRA_TITLE,downloadName).addCategory(Intent.CATEGORY_OPENABLE),202);}));

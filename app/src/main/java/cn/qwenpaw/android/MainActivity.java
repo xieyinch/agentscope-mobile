@@ -138,7 +138,7 @@ public final class MainActivity extends AppCompatActivity implements ChatControl
     }
     private void showChat(){
         screen="chat";approvalSignature="";attachmentSignature="";LinearLayout page=column();setRoot(page);
-        LinearLayout top=row();top.addView(design.iconButton("更多选项","more",v->more()));
+        LinearLayout top=row();top.addView(design.iconButton("返回平台工作空间","close",v->finish()));top.addView(design.iconButton("更多选项","more",v->more()));
         titleBox=column();titleBox.setGravity(Gravity.CENTER_VERTICAL);titleBox.setPadding(dp(8),0,dp(8),0);titleBox.setBackground(design.ripple(BG,12));titleBox.setOnClickListener(v->accounts());
         title=design.heading("AgentScope 随行",17);title.setMaxLines(1);title.setEllipsize(TextUtils.TruncateAt.END);titleBox.addView(title);
         accountLine=text("",11,MUTED);accountLine.setMaxLines(1);accountLine.setEllipsize(TextUtils.TruncateAt.END);accountLine.setPadding(0,dp(3),0,0);titleBox.addView(accountLine);top.addView(titleBox,new LinearLayout.LayoutParams(0,dp(48),1));

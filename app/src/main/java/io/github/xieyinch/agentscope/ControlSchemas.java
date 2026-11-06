@@ -1,0 +1,7 @@
+package io.github.xieyinch.agentscope;
+import org.json.*;
+final class ControlSchemas {
+    static JSONObject mcp(JSONObject source){JSONObject config=Api.obj("name","","description","","enabled",true,"transport","streamable_http","url","","headers",new JSONObject(),"command","","args",new JSONArray(),"env",new JSONObject(),"cwd","");for(String key:new String[]{"name","description","enabled","transport","url","headers","command","args","env","cwd","http_timeout"})if(source.has(key))try{config.put(key,source.opt(key));}catch(JSONException ignored){}return config;}
+    static void validateMcpCreate(JSONObject request){JSONObject client=request.optJSONObject("client");if(request.optString("client_key").trim().isEmpty())throw new IllegalArgumentException("请填写服务标识");if(client==null||client.optString("name").trim().isEmpty())throw new IllegalArgumentException("请填写 MCP 服务名称");if(client.optString("transport").equals("stdio")){if(client.optString("command").trim().isEmpty())throw new IllegalArgumentException("stdio 服务需要启动命令");}else{String url=client.optString("url").trim();if(!url.startsWith("https://")&&!url.startsWith("http://"))throw new IllegalArgumentException("请填写完整的 MCP 服务地址");}}
+    static JSONObject restore(JSONArray agents){return Api.obj("include_agents",true,"agent_ids",agents,"include_global_config",false,"include_secrets",false,"include_skill_pool",false,"mode","custom","preserve_local_protected_config",true);}
+}

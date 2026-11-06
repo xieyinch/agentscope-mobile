@@ -9,7 +9,6 @@ public final class PawApplication extends Application {
     public volatile ChatController chat;
     // In-memory only: a new process must check even if the previous one just checked.
     final AtomicBoolean startupUpdateCheckStarted=new AtomicBoolean();
-    volatile UpdateRelease requiredUpdate;
     @Override public void onCreate() {
         super.onCreate();Ui.configure(this);
         Thread.UncaughtExceptionHandler previous=Thread.getDefaultUncaughtExceptionHandler();
