@@ -63,6 +63,9 @@ public class NativeUiTest {
                 java.lang.reflect.Method pending=MainActivity.class.getDeclaredMethod("pendingAttachments",String.class);pending.setAccessible(true);((org.json.JSONArray)pending.invoke(a,"ui-chat")).put(ChatContent.attachment("/media/test.pdf","测试文档.pdf","application/pdf"));
                 java.lang.reflect.Method render=MainActivity.class.getDeclaredMethod("renderAttachments",String.class);render.setAccessible(true);render.invoke(a,"ui-chat");
             }catch(Exception e){throw new AssertionError(e);}});
+            java.util.concurrent.CountDownLatch historyReady=new java.util.concurrent.CountDownLatch(1);
+            scenario.onActivity(a->screenshotRoot.postOnAnimation(new Runnable(){@Override public void run(){if(find(screenshotRoot,"可以，添加附件后点击发送。这里是原生界面测试数据。")!=null)historyReady.countDown();else screenshotRoot.postOnAnimation(this);}}));
+            assertTrue("Chat history did not render",historyReady.await(5,java.util.concurrent.TimeUnit.SECONDS));
             screenshot("09-chat-composer");
             scenario.onActivity(a->{try{
                 java.lang.reflect.Field streaming=MainActivity.class.getDeclaredField("streaming");streaming.setAccessible(true);streaming.set(a,new okhttp3.OkHttpClient().newCall(new okhttp3.Request.Builder().url("https://example.invalid").build()));
@@ -78,6 +81,7 @@ public class NativeUiTest {
                 modelDialog=(android.app.AlertDialog)picker.invoke(a,new org.json.JSONArray().put(Api.obj("id","p","name","示例供应商","models",new org.json.JSONArray().put(Api.obj("id","base","name","基础模型")),"extra_models",new org.json.JSONArray().put(Api.obj("id","custom","name","我的模型")))),Api.obj("active_llm",Api.obj("provider_id","p","model","custom")),(Runnable)()->{});
             }catch(Exception e){throw new AssertionError(e);}});
             scenario.onActivity(a->{ViewGroup panel=(ViewGroup)modelDialog.getWindow().getDecorView();java.util.ArrayDeque<View> queue=new java.util.ArrayDeque<>();queue.add(panel);EditText search=null;ListView models=null;while(!queue.isEmpty()){View view=queue.remove();if(view instanceof EditText)search=(EditText)view;if(view instanceof ListView)models=(ListView)view;if(view instanceof ViewGroup){ViewGroup group=(ViewGroup)view;for(int i=0;i<group.getChildCount();i++)queue.add(group.getChildAt(i));}}assertNotNull(search);assertNotNull(models);assertEquals(2,models.getAdapter().getCount());search.setText("custom");assertEquals(1,models.getAdapter().getCount());assertTrue(models.getAdapter().getItem(0).toString().startsWith("✓"));});
+            scenario.onActivity(a->screenshotRoot=modelDialog.getWindow().getDecorView());
             screenshot("10-model-picker");
             // The picker is a separate native dialog window.
             InstrumentationRegistry.getInstrumentation().runOnMainSync(()->{});
