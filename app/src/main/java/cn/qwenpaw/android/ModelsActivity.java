@@ -29,6 +29,7 @@ public final class ModelsActivity extends AppCompatActivity {
     private TextView message;
     private ProgressBar progress;
     private AlertDialog editor,discoveryDialog;
+    private Toast notification;
     private final Map<View,Boolean> enabledBeforeRequest=new IdentityHashMap<>();
     private java.util.function.BooleanSupplier dirty=()->false;
     private String activeProvider="",activeModel="";
@@ -39,7 +40,7 @@ public final class ModelsActivity extends AppCompatActivity {
     }
     @Override protected void onSaveInstanceState(Bundle out){super.onSaveInstanceState(out);out.putString("provider",selected);out.putString("query",query);out.putBoolean("hidden",showHidden);}
     @Override protected void onResume(){super.onResume();if(api!=null&&!current())finish();}
-    @Override protected void onDestroy(){revision++;if(editor!=null)editor.dismiss();if(discoveryDialog!=null)discoveryDialog.dismiss();io.shutdownNow();super.onDestroy();}
+    @Override protected void onDestroy(){revision++;if(notification!=null)notification.cancel();if(editor!=null)editor.dismiss();if(discoveryDialog!=null)discoveryDialog.dismiss();io.shutdownNow();super.onDestroy();}
     @Override public void onBackPressed(){if(busy){tell("正在处理，请稍候",false);return;}if(!selected.isEmpty()){selected="";query="";render();}else super.onBackPressed();}
     private boolean current(){return !isFinishing()&&!isDestroyed()&&chat.loggedIn&&chat.scope()==scope&&chat.base.equals(api.base)&&chat.token.equals(api.token)&&chat.agent.equals(api.agent);}
     private boolean mutable(){if(busy)return false;if(chat.running||chat.busy||chat.uploads>0){tell("请先等待对话任务或附件上传结束，再修改模型设置",true);return false;}return true;}
@@ -47,11 +48,12 @@ public final class ModelsActivity extends AppCompatActivity {
     private interface Work {Object run()throws Exception;}
     private void request(Work work,Consumer<Object> done){request(work,done,this::failed);}
     private void request(Work work,Consumer<Object> done,Consumer<Exception> onError){
-        if(busy)return;busy=true;int id=++revision;progress.setVisibility(View.VISIBLE);tell("正在处理…",false);enable(root,false);if(editor!=null){editor.setCancelable(false);enable(editor.getWindow().getDecorView(),false);}if(discoveryDialog!=null)enable(discoveryDialog.getWindow().getDecorView(),false);
+        if(busy)return;if(notification!=null)notification.cancel();busy=true;int id=++revision;progress.setVisibility(View.VISIBLE);tell("正在处理…",false);enable(root,false);if(editor!=null){editor.setCancelable(false);enable(editor.getWindow().getDecorView(),false);}if(discoveryDialog!=null)enable(discoveryDialog.getWindow().getDecorView(),false);
         io.execute(()->{try{Object result=work.run();runOnUiThread(()->{if(!current()||id!=revision)return;settled();try{done.accept(result);}catch(Exception e){failed(e);}});}catch(Exception e){runOnUiThread(()->{if(!current()||id!=revision)return;settled();onError.accept(e);});}});
     }
     private void settled(){busy=false;enable(root,true);progress.setVisibility(View.GONE);tell("",false);}
-    private void failed(Exception e){if(e instanceof ApiClient.ApiException a&&a.status==401){chat.failure(e);finish();return;}String text=e.getMessage()==null?"操作失败，请重试":e.getMessage();tell(text,true);if(editor!=null&&editor.isShowing())Toast.makeText(this,text,Toast.LENGTH_LONG).show();}
+    private void toast(String text){if(notification!=null)notification.cancel();notification=Toast.makeText(this,text,Toast.LENGTH_LONG);notification.show();}
+    private void failed(Exception e){if(e instanceof ApiClient.ApiException a&&a.status==401){chat.failure(e);finish();return;}String text=e.getMessage()==null?"操作失败，请重试":e.getMessage();tell(text,true);if(editor!=null&&editor.isShowing())toast(text);}
     private void enable(View view,boolean enabled){if(enabled){enabledBeforeRequest.forEach(View::setEnabled);enabledBeforeRequest.clear();return;}enabledBeforeRequest.putIfAbsent(view,view.isEnabled());view.setEnabled(false);if(view instanceof ViewGroup g)for(int i=0;i<g.getChildCount();i++)enable(g.getChildAt(i),false);}
     private JSONArray catalog()throws IOException{Object data=api.call("GET","/models",null);if(!(data instanceof JSONArray))throw new IOException("服务器返回的模型列表格式不正确");return (JSONArray)data;}
     private JSONObject active()throws IOException{Object data=api.call("GET","/models/active?scope=effective&agent_id="+ApiClient.enc(api.agent),null);if(!(data instanceof JSONObject))throw new IOException("服务器未返回当前模型配置");return (JSONObject)data;}
@@ -76,7 +78,13 @@ public final class ModelsActivity extends AppCompatActivity {
         EditText search=field(selected.isEmpty()?"搜索供应商":"搜索模型名称或 ID",query,false);root.addView(search);
         if(p!=null){CheckBox hidden=new CheckBox(this);hidden.setText("显示已隐藏模型");hidden.setTextColor(Ui.MUTED);hidden.setChecked(showHidden);root.addView(hidden);hidden.setOnCheckedChangeListener((b,on)->{showHidden=on;render();});}
         ListView list=new ListView(this);list.setDivider(null);list.setDividerHeight(ui.dp(8));root.addView(list,new LinearLayout.LayoutParams(-1,0,1));TextView empty=ui.text("没有匹配项",14,Ui.MUTED);root.addView(empty);list.setEmptyView(empty);
-        List<JSONObject> shown=new ArrayList<>();ArrayAdapter<String> adapter=new ArrayAdapter<>(this,android.R.layout.simple_list_item_1,new ArrayList<>());list.setAdapter(adapter);
+        List<JSONObject> shown=new ArrayList<>();ArrayAdapter<String> adapter=new ArrayAdapter<String>(this,android.R.layout.simple_list_item_1,new ArrayList<>()){
+            @Override public View getView(int position,View convert,ViewGroup parent){
+                JSONObject item=shown.get(position);String id=Json.str(item,"id");boolean active=p!=null&&activeProvider.equals(selected)&&activeModel.equals(id);
+                LinearLayout outer=ui.column();outer.setPadding(0,0,0,ui.dp(8));LinearLayout card=ui.column();ui.padding(card,16,12);card.setBackground(ui.shape(active?Ui.TINT:Ui.WHITE,16,active?Ui.GREEN:Ui.LINE));TextView name=ui.heading((active?"✓  ":"")+Json.str(item,"name",id),16);if(active)name.setTextColor(Ui.GREEN);card.addView(name);ui.gap(card,5);
+                card.addView(ui.text(p==null?ModelCatalog.entries(item,false).length()+" 个模型 · "+(item.optBoolean("enabled",true)?"已启用":"已停用"):id+(ModelCatalog.hidden(p,id)?" · 已隐藏":""),12,Ui.MUTED));outer.addView(card);outer.setLayoutParams(new AbsListView.LayoutParams(-1,-2));return outer;
+            }
+        };list.setAdapter(adapter);
         Runnable filter=()->{shown.clear();adapter.clear();JSONArray source=p==null?providers:ModelCatalog.entries(p,showHidden);String q=query.trim().toLowerCase(Locale.ROOT);for(int i=0;i<source.length();i++){JSONObject item=source.optJSONObject(i);if(item==null)continue;String id=Json.str(item,"id"),name=Json.str(item,"name",id);if(!(name+" "+id).toLowerCase(Locale.ROOT).contains(q))continue;shown.add(item);adapter.add(p==null?name+"\n"+ModelCatalog.entries(item,false).length()+" 个模型 · "+(item.optBoolean("enabled",true)?"已启用":"已停用"):(activeProvider.equals(selected)&&activeModel.equals(id)?"✓ ":"")+name+"\n"+id+(ModelCatalog.hidden(p,id)?" · 已隐藏":""));}adapter.notifyDataSetChanged();};filter.run();watch(search,s->{query=s;filter.run();});
         list.setOnItemClickListener((parent,view,index,id)->{if(busy)return;if(p==null){selected=Json.str(shown.get(index),"id");query="";render();}else modelActions(p,shown.get(index));});
         if(busy)enable(root,false);
@@ -97,7 +105,7 @@ public final class ModelsActivity extends AppCompatActivity {
     private void connection(JSONObject p){
         if(busy)return;LinearLayout box=ui.column();String original=Json.str(p,"base_url",Json.str(p,"default_base_url"));EditText base=labeled(box,"API 服务地址",original,false),key=labeled(box,"新 API Key（留空保留现有密钥）","",true);base.setEnabled(!p.optBoolean("freeze_url"));
         box.addView(ui.text("密钥不会显示在页面、日志或页面重建状态中。测试可以使用未保存的地址和密钥。",12,Ui.MUTED));String path=providerPath(p);
-        box.addView(ui.button("测试连接",null,false,v->{if(busy)return;try{JSONObject payload=ModelCatalog.connection(base.getText().toString(),key.getText().toString(),false);request(()->{JSONObject result=Json.object(api.call("POST",path+"/test",payload));return ModelCatalog.outcome(result,"连接可用");},r->Toast.makeText(this,r.toString(),Toast.LENGTH_LONG).show());}catch(Exception e){failed(e);}}));
+        box.addView(ui.button("测试连接",null,false,v->{if(busy)return;try{JSONObject payload=ModelCatalog.connection(base.getText().toString(),key.getText().toString(),false);request(()->{JSONObject result=Json.object(api.call("POST",path+"/test",payload));return ModelCatalog.outcome(result,"连接可用");},r->toast(r.toString()));}catch(Exception e){failed(e);}}));
         box.addView(ui.button("保存连接设置",null,true,v->{if(!mutable())return;try{JSONObject payload=ModelCatalog.connection(base.getText().toString(),key.getText().toString(),true);request(()->mutateAndRead("PUT",path+"/config",payload),this::saved);}catch(Exception e){failed(e);}}));
         box.addView(ui.button(p.optBoolean("enabled",true)?"停用供应商":"启用供应商",null,false,v->{if(!mutable())return;confirm("更改供应商状态？","会影响使用此供应商的模型。",()->{if(mutable())request(()->mutateAndRead("PUT",path+"/config",Json.obj("enabled",!p.optBoolean("enabled",true),"auto_discover",false)),this::saved);});}));
         if(p.optBoolean("is_custom"))box.addView(ui.button("删除自定义供应商",null,false,v->{if(!mutable())return;confirm("删除“"+Json.str(p,"name")+"”？","将移除此供应商的连接设置和模型，请先切换依赖它的智能体。",()->{if(mutable())request(()->mutateAndRead("DELETE","/models/custom-providers/"+ApiClient.enc(Json.str(p,"id")),null),r->{selected="";saved(r);});});}));
