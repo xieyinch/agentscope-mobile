@@ -27,6 +27,7 @@ public final class SettingsActivity extends AppCompatActivity {
     private ApiClient api;
     private long scope;
     private final ExecutorService io=Executors.newFixedThreadPool(3);
+    private final ExecutorService extrasIo=Executors.newFixedThreadPool(3);
     private JSONObject strings=new JSONObject(),config;
     private final Map<String,String> edits=new LinkedHashMap<>();
     private JSONArray envs=new JSONArray(),catalog=new JSONArray(),memory=new JSONArray(),records=new JSONArray(),trend=new JSONArray();
@@ -58,7 +59,7 @@ public final class SettingsActivity extends AppCompatActivity {
     }
     @Override protected void onSaveInstanceState(Bundle out){super.onSaveInstanceState(out);out.putInt("page",page);out.putInt("section",section);JSONObject draft=new JSONObject();edits.forEach((k,v)->Json.put(draft,k,v));out.putString("runtimeEdits",draft.toString());out.putString("start",start.toString());out.putString("end",end.toString());}
     @Override protected void onResume(){super.onResume();if(api!=null&&!current())finish();}
-    @Override protected void onDestroy(){revision++;trendRevision++;extrasRevision++;io.shutdownNow();super.onDestroy();}
+    @Override protected void onDestroy(){revision++;trendRevision++;extrasRevision++;io.shutdownNow();extrasIo.shutdownNow();super.onDestroy();}
     @Override public void onBackPressed(){if(busy){toast("正在保存，请稍候");return;}if(!edits.isEmpty())confirm("放弃未保存的修改？","运行配置的修改尚未保存。",this::finish);else super.onBackPressed();}
     private boolean current(){return !isFinishing()&&!isDestroyed()&&chat.loggedIn&&scope==chat.scope()&&api.base.equals(chat.base)&&api.token.equals(chat.token)&&api.agent.equals(chat.agent);}
     private String t(String path){Object value=RuntimeConfig.get(strings,path);return value instanceof String?(String)value:path;}
@@ -82,7 +83,7 @@ public final class SettingsActivity extends AppCompatActivity {
     private void loadExtras(){
         int id=++extrasRevision;extrasPending=6;extrasFailures.clear();extrasError="";updateExtrasPanel();
         String[][] paths={{"language","/workspace/language","智能体语言"},{"timezone","/config/user-timezone","用户时区"},{"memory","/agents/memory/backends","记忆后端"},{"projects","/workspace/project-directory/dirs","默认工作区"},{"coding","/coding-mode","代码增强"},{"model","/models/active?scope=effective&agent_id="+ApiClient.enc(api.agent),"模型上下文"}};
-        for(String[] path:paths)io.execute(()->{
+        for(String[] path:paths)extrasIo.execute(()->{
             Object result=null;Exception problem=null;
             try{result=get(path[1]);if(path[0].equals("memory")?!(result instanceof JSONArray):!(result instanceof JSONObject))throw new IOException("响应格式不正确");}catch(Exception e){problem=e;}
             Object value=result;Exception error=problem;
