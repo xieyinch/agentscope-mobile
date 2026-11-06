@@ -19,6 +19,11 @@ public final class ModelCatalog {
         }
         JSONArray out=new JSONArray();for(JSONObject m:byId.values())out.put(m);return out;
     }
+    public static JSONObject importPayload(JSONObject model){
+        String id=Json.str(model,"id"),name=Json.str(model,"name");JSONObject result=Json.obj("id",id,"name",name.isEmpty()?id:name,"model_type",Json.str(model,"model_type","chat"));
+        for(String key:new String[]{"template_id","is_free","supports_multimodal","supports_image","supports_video","probe_source"})if(model.has(key)&&!model.isNull(key))Json.put(result,key,model.opt(key));
+        return result;
+    }
     public static boolean chatModel(JSONObject m){return Json.str(m,"model_type","chat").equals("chat");}
     public static JSONObject connection(String address,String key,boolean save){
         String url=address.trim();if(!url.isEmpty()){
