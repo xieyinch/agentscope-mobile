@@ -31,6 +31,7 @@ public class MainActivity extends Activity {
     private java.util.function.BooleanSupplier dirty=()->false;
     private final Map<String,String> drafts=new HashMap<>();
     private Api api;
+    private CommentEmoji commentEmoji;
     private LinearLayout root,body;
     private TextView heading,status;
     private ProgressBar loading;
@@ -469,10 +470,34 @@ public class MainActivity extends Activity {
     private void commentView(LinearLayout parent,JSONObject comment){
         LinearLayout card=column();card.setPadding(dp(16),dp(14),dp(16),dp(12));card.setBackground(Ui.shape(this,ui.surface,16));
         String author=CommunityContent.first(comment,"author_name");TextView name=text(author.isEmpty()?"用户":author,17,INK);name.setTypeface(null,Typeface.BOLD);card.addView(name);
-        String content=CommunityContent.first(comment,"content","body_text");TextView full=text(content.isEmpty()?"暂无回复内容":content,16,INK);full.setLineSpacing(dp(3),1);full.setTextIsSelectable(true);full.setMaxLines(4);full.setEllipsize(android.text.TextUtils.TruncateAt.END);card.addView(full);
-        Button expand=button("展开全文",()->{});expand.setVisibility(View.GONE);card.addView(expand);
-        final boolean[] expanded={false};expand.setOnClickListener(v->{expanded[0]=!expanded[0];full.setMaxLines(expanded[0]?Integer.MAX_VALUE:4);full.setEllipsize(expanded[0]?null:android.text.TextUtils.TruncateAt.END);expand.setText(expanded[0]?"收起":"展开全文");});
-        full.post(()->{if(full.getLayout()!=null&&full.getLayout().getLineCount()>0){int last=full.getLayout().getLineCount()-1;if(full.getLayout().getEllipsisCount(last)>0||full.getLayout().getLineCount()>4)expand.setVisibility(View.VISIBLE);}});
+        String content = CommunityContent.first(comment, "content", "body_text");
+        TextView full = text("", 16, INK);
+        full.setLineSpacing(dp(3), 1);
+        full.setTextIsSelectable(true);
+        full.setMaxLines(4);
+        full.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        card.addView(full);
+        Button expand = button("展开全文", () -> {});
+        expand.setVisibility(View.GONE);
+        card.addView(expand);
+        final boolean[] expanded = {false};
+        Runnable updateExpand = () -> {
+            android.text.Layout layout = full.getLayout();
+            if (layout == null || layout.getLineCount() == 0) return;
+            boolean truncated = layout.getLineCount() > 4
+                || layout.getEllipsisCount(layout.getLineCount() - 1) > 0;
+            expand.setVisibility(expanded[0] || truncated ? View.VISIBLE : View.GONE);
+        };
+        expand.setOnClickListener(v -> {
+            expanded[0] = !expanded[0];
+            full.setMaxLines(expanded[0] ? Integer.MAX_VALUE : 4);
+            full.setEllipsize(expanded[0] ? null : android.text.TextUtils.TruncateAt.END);
+            expand.setText(expanded[0] ? "收起" : "展开全文");
+        });
+        full.addOnLayoutChangeListener((v, l, t, r, b, oldL, oldT, oldR, oldB) -> updateExpand.run());
+        if (commentEmoji == null) commentEmoji = new CommentEmoji();
+        commentEmoji.bind(full, content.isEmpty() ? "暂无回复内容" : content, dp(42), updateExpand);
+        full.post(updateExpand);
         LinearLayout.LayoutParams params=new LinearLayout.LayoutParams(-1,-2);params.bottomMargin=dp(10);parent.addView(card,params);
         JSONArray replies=comment.optJSONArray("replies");if(replies!=null&&replies.length()>0){LinearLayout nested=column();nested.setPadding(dp(16),0,0,0);parent.addView(nested);for(int i=0;i<replies.length();i++){JSONObject reply=replies.optJSONObject(i);if(reply!=null)commentView(nested,reply);}}
     }

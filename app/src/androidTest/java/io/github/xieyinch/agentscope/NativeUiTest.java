@@ -53,6 +53,69 @@ public class NativeUiTest {
             scenario.onActivity(a->{tap(a,"收起");assertNotNull(find(a.getWindow().getDecorView(),"展开全文"));});
         }
     }
+    @Test public void rendersOriginalCommentEmojiInline() throws Exception {
+        byte[] gif = android.util.Base64.decode(
+            "R0lGODlhFAAUAPAAAAB6/wAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQAFAAAACwAAAAAFAAUAAACEYSPqcvtD6OctNqLs968+68VACH5BAAUAAAALAAAAAAUABQAgP/MAAAAAAIRhI+py+0Po5y02ouz3rz7rxUAOw==",
+            android.util.Base64.DEFAULT);
+        Bitmap pngImage = Bitmap.createBitmap(20, 20, Bitmap.Config.ARGB_8888);
+        pngImage.eraseColor(android.graphics.Color.BLUE);
+        ByteArrayOutputStream encoded = new ByteArrayOutputStream();
+        pngImage.compress(Bitmap.CompressFormat.PNG, 100, encoded);
+        pngImage.recycle();
+        byte[] png = encoded.toByteArray();
+        okhttp3.OkHttpClient images = new okhttp3.OkHttpClient.Builder().addInterceptor(chain -> {
+            okhttp3.Request request = chain.request();
+            assertEquals("img.alicdn.com", request.url().host());
+            assertNull(request.header("Authorization"));
+            assertNull(request.header("Cookie"));
+            boolean animated = request.url().encodedPath().endsWith(".gif");
+            return new okhttp3.Response.Builder().request(request)
+                .protocol(okhttp3.Protocol.HTTP_1_1).code(200).message("OK")
+                .body(okhttp3.ResponseBody.create(animated ? gif : png,
+                    okhttp3.MediaType.get(animated ? "image/gif" : "image/png"))).build();
+        }).build();
+        String displayed = "前文[表情]中间[表情] https://example.org [表情]";
+        try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
+            scenario.onActivity(a -> {
+                try {
+                    screenshotRoot = a.getWindow().getDecorView();
+                    java.lang.reflect.Field emoji = MainActivity.class.getDeclaredField("commentEmoji");
+                    emoji.setAccessible(true);
+                    emoji.set(a, new CommentEmoji(images));
+                    java.lang.reflect.Method start = MainActivity.class.getDeclaredMethod("start", String.class);
+                    start.setAccessible(true);
+                    start.invoke(a, "社区帖子");
+                    java.lang.reflect.Field body = MainActivity.class.getDeclaredField("body");
+                    body.setAccessible(true);
+                    java.lang.reflect.Method render = MainActivity.class.getDeclaredMethod(
+                        "commentView", LinearLayout.class, org.json.JSONObject.class);
+                    render.setAccessible(true);
+                    render.invoke(a, body.get(a), Api.obj("author_name", "测试回复", "content",
+                        "前文[emoji:https://img.alicdn.com/imgextra/test.png]中间"
+                        + "[emoji:https://img.alicdn.com/imgextra/test.gif] https://example.org "
+                        + "[emoji:https://example.invalid/bad.png]"));
+                } catch (ReflectiveOperationException e) {
+                    throw new AssertionError(e);
+                }
+            });
+            java.util.concurrent.atomic.AtomicReference<android.text.style.ImageSpan[]> loaded =
+                new java.util.concurrent.atomic.AtomicReference<>(new android.text.style.ImageSpan[0]);
+            for (int attempt = 0; attempt < 100 && loaded.get().length < 2; attempt++) {
+                scenario.onActivity(a -> {
+                    TextView comment = (TextView) find(screenshotRoot, displayed);
+                    assertNotNull("Emoji URLs leaked into the displayed comment", comment);
+                    android.text.Spanned text = (android.text.Spanned) comment.getText();
+                    loaded.set(text.getSpans(0, text.length(), android.text.style.ImageSpan.class));
+                    assertTrue(comment.isTextSelectable());
+                });
+                if (loaded.get().length < 2) Thread.sleep(50);
+            }
+            assertEquals(2, loaded.get().length);
+            assertTrue(java.util.Arrays.stream(loaded.get()).anyMatch(
+                span -> span.getDrawable() instanceof android.graphics.drawable.AnimatedImageDrawable));
+            screenshot("25-community-comment-emoji");
+        }
+    }
     @Test public void searchesModelsAndShowsNativeChatComposer() throws Exception {
         try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)){
             scenario.onActivity(a->{try{
