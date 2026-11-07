@@ -5,3 +5,5 @@
 `settings-zh.json` 等上游 QwenPaw 文案和协议参考内容遵循 Apache-2.0，见 `third_party/QWENPAW-LICENSE.txt`。
 
 AndroidX、Material、OkHttp、Markwon 与构建依赖保留各自许可证。没有引入原项目的 Mermaid JavaScript、WebView 或第三方升级服务；Mermaid 围栏使用原生可选中源码展示。
+
+社区评论表情使用 [Glide 4.16.0](https://github.com/bumptech/glide/tree/v4.16.0) 解码图片，许可证见 `third_party/GLIDE-LICENSE.txt`。

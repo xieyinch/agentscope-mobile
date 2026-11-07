@@ -1,13 +1,8 @@
 package io.github.xieyinch.agentscope;
 
-import android.content.res.Resources;
-import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
-import android.graphics.ImageDecoder;
-import android.graphics.drawable.AnimatedImageDrawable;
-import android.graphics.drawable.BitmapDrawable;
+import android.graphics.drawable.Animatable;
 import android.graphics.drawable.Drawable;
-import android.os.Build;
 import android.os.SystemClock;
 import android.text.Spannable;
 import android.text.SpannableStringBuilder;
@@ -15,8 +10,16 @@ import android.text.style.ImageSpan;
 import android.view.View;
 import android.widget.TextView;
 
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+
+import com.bumptech.glide.Glide;
+import com.bumptech.glide.RequestManager;
+import com.bumptech.glide.load.engine.DiskCacheStrategy;
+import com.bumptech.glide.request.target.CustomTarget;
+import com.bumptech.glide.request.transition.Transition;
+
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -79,18 +82,17 @@ final class CommentEmoji {
 
         View.OnAttachStateChangeListener binding = new View.OnAttachStateChangeListener() {
             @Override public void onViewAttachedToWindow(View v) {
-                for (Emoji emoji : emojis) {
-                    if (emoji.image == null) load(view, emoji, size, onLayoutNeeded);
-                    else animate(view, emoji.image);
-                }
+                RequestManager requests = Glide.with(view);
+                for (Emoji emoji : emojis) load(view, emoji, size, onLayoutNeeded, requests);
             }
 
             @Override public void onViewDetachedFromWindow(View v) {
                 for (Emoji emoji : emojis) {
                     if (emoji.call != null) emoji.call.cancel();
-                    if (Build.VERSION.SDK_INT >= 28 && emoji.image instanceof AnimatedImageDrawable) {
-                        ((AnimatedImageDrawable) emoji.image).stop();
-                        emoji.image.setCallback(null);
+                    if (emoji.target != null) {
+                        emoji.requests.clear(emoji.target);
+                        emoji.target = null;
+                        emoji.requests = null;
                     }
                 }
             }
@@ -101,10 +103,9 @@ final class CommentEmoji {
         }
     }
 
-    private void load(TextView view, Emoji emoji, int size, Runnable onLayoutNeeded) {
+    private void load(TextView view, Emoji emoji, int size, Runnable onLayoutNeeded, RequestManager requests) {
         Call call = client.newCall(new Request.Builder().url(emoji.url).build());
         emoji.call = call;
-        Resources resources = view.getResources();
         call.enqueue(new Callback() {
             @Override public void onFailure(Call ignored, IOException error) {
                 // The readable placeholder remains in the comment.
@@ -115,17 +116,15 @@ final class CommentEmoji {
                     if (!response.isSuccessful() || response.body() == null) return;
                     BufferedSource source = response.body().source();
                     if (source.request(MAX_BYTES + 1)) return;
-                    Drawable image = decode(resources, source.readByteArray(), size);
-                    if (image == null) return;
+                    byte[] bytes = source.readByteArray();
+                    BitmapFactory.Options bounds = new BitmapFactory.Options();
+                    bounds.inJustDecodeBounds = true;
+                    BitmapFactory.decodeByteArray(bytes, 0, bytes.length, bounds);
+                    int longest = Math.max(bounds.outWidth, bounds.outHeight);
+                    if (longest <= 0 || longest > MAX_DIMENSION) return;
                     view.post(() -> {
-                        if (call.isCanceled() || !view.isAttachedToWindow()
-                                || !(view.getText() instanceof Spannable)) return;
-                        emoji.image = image;
-                        Spannable displayed = (Spannable) view.getText();
-                        displayed.setSpan(new ImageSpan(image, ImageSpan.ALIGN_BASELINE),
-                            emoji.start, emoji.end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
-                        animate(view, image);
-                        view.post(onLayoutNeeded);
+                        if (call.isCanceled() || !view.isAttachedToWindow()) return;
+                        showImage(view, emoji, size, onLayoutNeeded, requests, bytes);
                     });
                 } catch (IOException | RuntimeException ignored) {
                     // An unavailable or malformed image leaves the placeholder in place.
@@ -134,51 +133,57 @@ final class CommentEmoji {
         });
     }
 
-    private static Drawable decode(Resources resources, byte[] bytes, int size) throws IOException {
-        Drawable image;
-        if (Build.VERSION.SDK_INT >= 28) {
-            ImageDecoder.Source source = ImageDecoder.createSource(ByteBuffer.wrap(bytes));
-            image = ImageDecoder.decodeDrawable(source, (decoder, info, ignored) -> {
-                int width = info.getSize().getWidth(), height = info.getSize().getHeight();
-                if (Math.max(width, height) > MAX_DIMENSION) throw new IllegalArgumentException();
-                float ratio = Math.min(1f, (float) size / Math.max(width, height));
-                decoder.setTargetSize(Math.max(1, Math.round(width * ratio)),
-                    Math.max(1, Math.round(height * ratio)));
-            });
-        } else {
-            BitmapFactory.Options options = new BitmapFactory.Options();
-            options.inJustDecodeBounds = true;
-            BitmapFactory.decodeByteArray(bytes, 0, bytes.length, options);
-            int longest = Math.max(options.outWidth, options.outHeight);
-            if (longest <= 0 || longest > MAX_DIMENSION) return null;
-            options.inJustDecodeBounds = false;
-            options.inSampleSize = 1;
-            while (longest / options.inSampleSize > size * 2) options.inSampleSize *= 2;
-            Bitmap bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.length, options);
-            if (bitmap == null) return null;
-            image = new BitmapDrawable(resources, bitmap);
-        }
-        float ratio = (float) size / Math.max(image.getIntrinsicWidth(), image.getIntrinsicHeight());
-        image.setBounds(0, 0, Math.max(1, Math.round(image.getIntrinsicWidth() * ratio)),
-            Math.max(1, Math.round(image.getIntrinsicHeight() * ratio)));
-        return image;
-    }
+    private void showImage(TextView view, Emoji emoji, int size, Runnable onLayoutNeeded,
+                           RequestManager requests, byte[] bytes) {
+        Spannable displayed = (Spannable) view.getText();
+        emoji.requests = requests;
+        emoji.target = new CustomTarget<Drawable>(size, size) {
+            private ImageSpan span;
 
-    private static void animate(TextView view, Drawable image) {
-        if (Build.VERSION.SDK_INT < 28 || !(image instanceof AnimatedImageDrawable)) return;
-        AnimatedImageDrawable animation = (AnimatedImageDrawable) image;
-        animation.setCallback(new Drawable.Callback() {
-            @Override public void invalidateDrawable(Drawable drawable) { view.invalidate(); }
+            @Override public void onResourceReady(@NonNull Drawable image,
+                                                  @Nullable Transition<? super Drawable> transition) {
+                float scale = (float) size / Math.max(image.getIntrinsicWidth(), image.getIntrinsicHeight());
+                image.setBounds(0, 0, Math.max(1, Math.round(image.getIntrinsicWidth() * scale)),
+                    Math.max(1, Math.round(image.getIntrinsicHeight() * scale)));
+                span = new ImageSpan(image, ImageSpan.ALIGN_BASELINE);
+                displayed.setSpan(span, emoji.start, emoji.end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);
+                image.setCallback(new Drawable.Callback() {
+                    @Override public void invalidateDrawable(Drawable drawable) { view.invalidate(); }
 
-            @Override public void scheduleDrawable(Drawable drawable, Runnable action, long when) {
-                view.postDelayed(action, Math.max(0, when - SystemClock.uptimeMillis()));
+                    @Override public void scheduleDrawable(Drawable drawable, Runnable action, long when) {
+                        view.postDelayed(action, Math.max(0, when - SystemClock.uptimeMillis()));
+                    }
+
+                    @Override public void unscheduleDrawable(Drawable drawable, Runnable action) {
+                        view.removeCallbacks(action);
+                    }
+                });
+                onStart();
+                view.post(onLayoutNeeded);
             }
 
-            @Override public void unscheduleDrawable(Drawable drawable, Runnable action) {
-                view.removeCallbacks(action);
+            @Override public void onStart() {
+                if (span != null && span.getDrawable() instanceof Animatable) {
+                    ((Animatable) span.getDrawable()).start();
+                }
             }
-        });
-        animation.start();
+
+            @Override public void onStop() {
+                if (span != null && span.getDrawable() instanceof Animatable) {
+                    ((Animatable) span.getDrawable()).stop();
+                }
+            }
+
+            @Override public void onLoadCleared(@Nullable Drawable placeholder) {
+                if (span == null) return;
+                onStop();
+                span.getDrawable().setCallback(null);
+                displayed.removeSpan(span);
+                span = null;
+            }
+        };
+        requests.asDrawable().load(bytes).diskCacheStrategy(DiskCacheStrategy.NONE)
+            .skipMemoryCache(true).into(emoji.target);
     }
 
     private static final class Emoji {
@@ -186,7 +191,8 @@ final class CommentEmoji {
         final int end;
         final HttpUrl url;
         Call call;
-        Drawable image;
+        CustomTarget<Drawable> target;
+        RequestManager requests;
 
         Emoji(int start, int end, HttpUrl url) {
             this.start = start;

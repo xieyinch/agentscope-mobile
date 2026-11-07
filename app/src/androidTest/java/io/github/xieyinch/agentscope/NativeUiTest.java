@@ -112,7 +112,8 @@ public class NativeUiTest {
             }
             assertEquals(2, loaded.get().length);
             assertTrue(java.util.Arrays.stream(loaded.get()).anyMatch(
-                span -> span.getDrawable() instanceof android.graphics.drawable.AnimatedImageDrawable));
+                span -> span.getDrawable() instanceof com.bumptech.glide.load.resource.gif.GifDrawable
+                    && ((com.bumptech.glide.load.resource.gif.GifDrawable) span.getDrawable()).getFrameCount() > 1));
             screenshot("25-community-comment-emoji");
         }
     }

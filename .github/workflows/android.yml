@@ -87,7 +87,7 @@ jobs:
           disable-animations: true
           script: |
             adb shell settings put secure show_ime_with_hard_keyboard 1
-            gradle --no-daemon connectedDebugAndroidTest
+            gradle --no-daemon connectedDebugAndroidTest || { adb logcat -b crash -d; exit 1; }
             mkdir -p ui-preview
             adb pull /sdcard/Pictures/agentscope-ui-preview/. ui-preview/
             for file in ui-preview/*.png; do mv "$file" "ui-preview/api${{ matrix.api }}-$(basename "$file")"; done
