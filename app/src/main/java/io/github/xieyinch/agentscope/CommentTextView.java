@@ -1,11 +1,14 @@
 package io.github.xieyinch.agentscope;
 
+import android.annotation.SuppressLint;
 import android.content.Context;
 import android.text.Layout;
 import android.view.Gravity;
 import android.widget.TextView;
 
 /** Keeps the full text layout so folding cannot hide the evidence of overflow. */
+// MainActivity uses the platform theme and framework text widgets.
+@SuppressLint("AppCompatCustomView")
 final class CommentTextView extends TextView {
     private static final int PREVIEW_LINES = 4;
     private boolean expanded;
