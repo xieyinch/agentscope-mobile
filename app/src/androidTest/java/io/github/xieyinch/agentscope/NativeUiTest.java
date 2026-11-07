@@ -39,20 +39,66 @@ public class NativeUiTest {
         try(OutputStream out=context.getContentResolver().openOutputStream(output)){assertNotNull(out);bitmap.compress(Bitmap.CompressFormat.PNG,100,out);}bitmap.recycle();
     }
     @Test public void expandsAndCollapsesFullComment() throws Exception {
-        try(ActivityScenario<MainActivity> scenario=ActivityScenario.launch(MainActivity.class)){
-            scenario.onActivity(a->{try{
-                screenshotRoot=a.getWindow().getDecorView();
-                java.lang.reflect.Method start=MainActivity.class.getDeclaredMethod("start",String.class);start.setAccessible(true);start.invoke(a,"回复交互测试");
-                java.lang.reflect.Field field=MainActivity.class.getDeclaredField("body");field.setAccessible(true);LinearLayout body=(LinearLayout)field.get(a);
-                java.lang.reflect.Method render=MainActivity.class.getDeclaredMethod("commentView",LinearLayout.class,org.json.JSONObject.class);render.setAccessible(true);
-                render.invoke(a,body,Api.obj("author_name","测试回复","content","第一行\n第二行\n第三行\n第四行\n第五行\n最后一行：完整内容可复制"));
-            }catch(Exception e){throw new AssertionError(e);}});
+        String comment = "先说结论：这个部署可以下载到本地，也可以装在自己的服务器上。"
+            + "不同的使用方式，费用和配置要求并不一样。\n\n"
+            + "第一种是在本地运行，需要先确认系统环境与可用内存。"
+            + "第二种是用云端部署，可以从平台查看模型和实例的状态。\n\n"
+            + "最后一行：完整内容可复制";
+        try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
+            scenario.onActivity(a -> {
+                try {
+                    screenshotRoot = a.getWindow().getDecorView();
+                    java.lang.reflect.Method start = MainActivity.class.getDeclaredMethod("start", String.class);
+                    start.setAccessible(true);
+                    start.invoke(a, "回复交互测试");
+                    java.lang.reflect.Field field = MainActivity.class.getDeclaredField("body");
+                    field.setAccessible(true);
+                    java.lang.reflect.Method render = MainActivity.class.getDeclaredMethod(
+                        "commentView", LinearLayout.class, org.json.JSONObject.class);
+                    render.setAccessible(true);
+                    render.invoke(a, field.get(a), Api.obj("author_name", "测试回复", "content", comment));
+                    render.invoke(a, field.get(a), Api.obj("author_name", "简短回复", "content", "短评论"));
+                } catch (ReflectiveOperationException e) {
+                    throw new AssertionError(e);
+                }
+            });
             screenshot("07-comment-collapsed");
-            scenario.onActivity(a->{View toggle=find(a.getWindow().getDecorView(),"展开全文");assertNotNull(toggle);assertEquals(View.VISIBLE,toggle.getVisibility());tap(a,"展开全文");TextView content=(TextView)find(a.getWindow().getDecorView(),"第一行\n第二行\n第三行\n第四行\n第五行\n最后一行：完整内容可复制");assertEquals(Integer.MAX_VALUE,content.getMaxLines());assertTrue(content.isTextSelectable());});
+            scenario.onActivity(a -> {
+                View toggle = find(screenshotRoot, "展开全文");
+                assertNotNull(toggle);
+                assertEquals(View.VISIBLE, toggle.getVisibility());
+                CommentTextView content = (CommentTextView) find(screenshotRoot, comment);
+                assertFoldedComment(content);
+                content.scrollTo(0, 100);
+                assertEquals(0, content.getScrollY());
+                TextView shortComment = (TextView) find(screenshotRoot, "短评论");
+                View shortToggle = find((View) shortComment.getParent(), "展开全文");
+                assertEquals(View.GONE, shortToggle.getVisibility());
+                tap(a, "展开全文");
+            });
             screenshot("08-comment-expanded");
-            scenario.onActivity(a->{tap(a,"收起");assertNotNull(find(a.getWindow().getDecorView(),"展开全文"));});
+            scenario.onActivity(a -> {
+                CommentTextView content = (CommentTextView) find(screenshotRoot, comment);
+                assertTrue(content.isExpanded());
+                assertTrue(content.isTextSelectable());
+                assertEquals(comment.length(), content.getLayout().getLineEnd(content.getLineCount() - 1));
+                assertTrue(content.getHeight() >= content.getLayout().getHeight());
+                tap(a, "收起");
+            });
+            screenshot("27-comment-recollapsed");
+            scenario.onActivity(a -> assertFoldedComment((CommentTextView) find(screenshotRoot, comment)));
         }
     }
+
+    private static void assertFoldedComment(CommentTextView content) {
+        assertFalse(content.isExpanded());
+        assertTrue(content.getLineCount() > 4);
+        int visibleHeight = content.getHeight() - content.getCompoundPaddingTop()
+            - content.getCompoundPaddingBottom();
+        assertEquals(content.getLayout().getLineBottom(3), visibleHeight);
+        assertEquals(0, content.getScrollY());
+    }
+
     @Test public void rendersOriginalCommentEmojiInline() throws Exception {
         byte[] gif = android.util.Base64.decode(
             "R0lGODlhFAAUAPAAAAB6/wAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQAFAAAACwAAAAAFAAUAAACEYSPqcvtD6OctNqLs968+68VACH5BAAUAAAALAAAAAAUABQAgP/MAAAAAAIRhI+py+0Po5y02ouz3rz7rxUAOw==",
@@ -74,7 +120,9 @@ public class NativeUiTest {
                 .body(okhttp3.ResponseBody.create(animated ? gif : png,
                     okhttp3.MediaType.get(animated ? "image/gif" : "image/png"))).build();
         }).build();
-        String displayed = "前文[表情]中间[表情] https://example.org [表情]";
+        String tail = "\n\n后续段落包含足够长的文字，用来检查图片加载后是否还可以查看全文。"
+            + "展开时可以读到这里，收起时只显示前四行。\n\n末尾";
+        String displayed = "前文[表情]中间[表情] https://example.org [表情]" + tail;
         try (ActivityScenario<MainActivity> scenario = ActivityScenario.launch(MainActivity.class)) {
             scenario.onActivity(a -> {
                 try {
@@ -93,7 +141,7 @@ public class NativeUiTest {
                     render.invoke(a, body.get(a), Api.obj("author_name", "测试回复", "content",
                         "前文[emoji:https://img.alicdn.com/imgextra/test.png]中间"
                         + "[emoji:https://img.alicdn.com/imgextra/test.gif] https://example.org "
-                        + "[emoji:https://example.invalid/bad.png]"));
+                        + "[emoji:https://example.invalid/bad.png]" + tail));
                 } catch (ReflectiveOperationException e) {
                     throw new AssertionError(e);
                 }
@@ -115,6 +163,18 @@ public class NativeUiTest {
                 span -> span.getDrawable() instanceof com.bumptech.glide.load.resource.gif.GifDrawable
                     && ((com.bumptech.glide.load.resource.gif.GifDrawable) span.getDrawable()).getFrameCount() > 1));
             screenshot("25-community-comment-emoji");
+            scenario.onActivity(a -> {
+                assertFoldedComment((CommentTextView) find(screenshotRoot, displayed));
+                tap(a, "展开全文");
+            });
+            screenshot("26-community-comment-emoji-expanded");
+            scenario.onActivity(a -> {
+                CommentTextView comment = (CommentTextView) find(screenshotRoot, displayed);
+                assertTrue(comment.isExpanded());
+                assertTrue(comment.getHeight() >= comment.getLayout().getHeight());
+                android.text.Spanned text = (android.text.Spanned) comment.getText();
+                assertEquals(2, text.getSpans(0, text.length(), android.text.style.ImageSpan.class).length);
+            });
         }
     }
     @Test public void searchesModelsAndShowsNativeChatComposer() throws Exception {

@@ -471,28 +471,21 @@ public class MainActivity extends Activity {
         LinearLayout card=column();card.setPadding(dp(16),dp(14),dp(16),dp(12));card.setBackground(Ui.shape(this,ui.surface,16));
         String author=CommunityContent.first(comment,"author_name");TextView name=text(author.isEmpty()?"用户":author,17,INK);name.setTypeface(null,Typeface.BOLD);card.addView(name);
         String content = CommunityContent.first(comment, "content", "body_text");
-        TextView full = text("", 16, INK);
+        CommentTextView full = new CommentTextView(this);
+        full.setTextSize(16);
+        full.setTextColor(INK);
+        full.setPadding(0, dp(4), 0, dp(4));
         full.setLineSpacing(dp(3), 1);
         full.setTextIsSelectable(true);
-        full.setMaxLines(4);
-        full.setEllipsize(android.text.TextUtils.TruncateAt.END);
         card.addView(full);
         Button expand = button("展开全文", () -> {});
         expand.setVisibility(View.GONE);
         card.addView(expand);
-        final boolean[] expanded = {false};
-        Runnable updateExpand = () -> {
-            android.text.Layout layout = full.getLayout();
-            if (layout == null || layout.getLineCount() == 0) return;
-            boolean truncated = layout.getLineCount() > 4
-                || layout.getEllipsisCount(layout.getLineCount() - 1) > 0;
-            expand.setVisibility(expanded[0] || truncated ? View.VISIBLE : View.GONE);
-        };
+        Runnable updateExpand = () -> expand.setVisibility(
+            full.isExpanded() || full.hasHiddenLines() ? View.VISIBLE : View.GONE);
         expand.setOnClickListener(v -> {
-            expanded[0] = !expanded[0];
-            full.setMaxLines(expanded[0] ? Integer.MAX_VALUE : 4);
-            full.setEllipsize(expanded[0] ? null : android.text.TextUtils.TruncateAt.END);
-            expand.setText(expanded[0] ? "收起" : "展开全文");
+            full.setExpanded(!full.isExpanded());
+            expand.setText(full.isExpanded() ? "收起" : "展开全文");
         });
         full.addOnLayoutChangeListener((v, l, t, r, b, oldL, oldT, oldR, oldB) -> updateExpand.run());
         if (commentEmoji == null) commentEmoji = new CommentEmoji();
